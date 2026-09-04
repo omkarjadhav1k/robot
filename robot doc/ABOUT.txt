@@ -1,0 +1,42 @@
+Done. 🔥 I created the **full implementation specification for Antigravity**. It is much more detailed than the feature list and covers the complete robot system:
+
+* What the robot is and why it exists
+* Exact **Robot ↔ Backend ↔ Gemini ↔ App** architecture
+* Current development mode using the PC temporarily
+* Final **exhibition mode with no PC**
+* ESP32 responsibilities
+* Current + pending hardware
+* Provisional ESP32 pin mapping
+* Relay, microphone, speaker, OLED and buttons
+* Robot state machine
+* Robot-name activation / push-to-talk
+* Voice pipeline
+* Gemini's role and strict limitations
+* Structured AI commands
+* Business instruction `.txt` system
+* Inventory, billing, customers, payments, reminders and reports
+* Automation and proactive manager behavior
+* Multi-action commands
+* Flutter app architecture
+* Backend API structure
+* Database entities
+* Authentication and permissions
+* Robot authentication and security
+* Heartbeat and command lifecycle
+* Offline/fallback mode
+* Development phases
+* Acceptance tests
+* Exhibition demo workflow
+* **Explicit instructions for the Antigravity coding agent**
+
+The source feature decisions are incorporated, including your removal of standalone AI text chat, robot-name activation, business instruction TXT upload, barcode product flow, and robot-only AI voice billing.  
+
+### Files
+
+[📘 Download the Antigravity Specification — DOCX](sandbox:/mnt/data/Business_AI_Robot_Antigravity_Specification.docx)
+
+[💻 Download the Antigravity Specification — Markdown](sandbox:/mnt/data/Business_AI_Robot_Antigravity_Specification.md)
+
+**For Antigravity, I recommend using the Markdown file as the project specification/context file**, while the DOCX is the human-readable master document.
+
+One important detail: the ESP32 pin map in the document is explicitly marked **provisional** because the actual microphone/amplifier/relay boards still need to be physically verified before we lock the wiring.

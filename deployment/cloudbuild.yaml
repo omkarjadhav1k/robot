@@ -1,0 +1,45 @@
+# ==============================================================================
+# Google Cloud Build — Deploy Business AI Robot to Google Cloud Run
+# ==============================================================================
+steps:
+  # 1. Build container image using Dockerfile
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/business-ai-robot-backend:$COMMIT_SHA'
+      - '-f'
+      - 'deployment/Dockerfile'
+      - '.'
+
+  # 2. Push container image to Google Container Registry / Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/business-ai-robot-backend:$COMMIT_SHA'
+
+  # 3. Deploy container image to Google Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'business-ai-robot-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/business-ai-robot-backend:$COMMIT_SHA'
+      - '--region'
+      - 'asia-south1' # Mumbai, India (Lowest latency for India)
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--min-instances'
+      - '0' # Scales to 0 when idle (100% free)
+      - '--max-instances'
+      - '2'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+
+images:
+  - 'gcr.io/$PROJECT_ID/business-ai-robot-backend:$COMMIT_SHA'

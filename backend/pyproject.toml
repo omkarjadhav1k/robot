@@ -1,0 +1,23 @@
+[project]
+name = "business-ai-robot-backend"
+version = "0.1.0"
+description = "FastAPI Backend for Business AI Robot"
+readme = "../README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "httpx>=0.27.0",
+    "python-multipart>=0.0.12",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = ["."]
+asyncio_mode = "auto"
