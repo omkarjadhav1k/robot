@@ -16,9 +16,8 @@
 #define WIFI_SSID           "YOUR_WIFI_SSID"
 #define WIFI_PASSWORD       "YOUR_WIFI_PASSWORD"
 
-// --- Central Brain Backend URL ---
-// Configured with your laptop's current Wi-Fi LAN IP:
-#define BACKEND_BASE_URL    "http://192.168.1.33:8000"
+// --- Central Brain Backend URL (Live Cloud Backend on Render) ---
+#define BACKEND_BASE_URL    "https://business-ai-robot-backend.onrender.com"
 
 // --- Timing & Intervals ---
 #define HEARTBEAT_INTERVAL_MS   3000   // Send heartbeat & poll commands every 3s

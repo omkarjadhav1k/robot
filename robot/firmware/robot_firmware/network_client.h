@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include "config.h"
 #include "status_led.h"
@@ -17,6 +18,17 @@ private:
     unsigned long _lastHeartbeatTime;
     unsigned long _lastWifiCheckTime;
     bool _isConnected;
+    WiFiClientSecure _secureClient;
+    WiFiClient _plainClient;
+
+    bool _beginHttp(HTTPClient& http, const String& url) {
+        if (url.startsWith("https://")) {
+            _secureClient.setInsecure(); // Connect via HTTPS without hardcoded Root CA certificate
+            return http.begin(_secureClient, url);
+        } else {
+            return http.begin(_plainClient, url);
+        }
+    }
 
     // Helper: Extract JSON string value by key
     String _extractJsonString(const String& json, const String& key) {
@@ -114,9 +126,9 @@ public:
         HTTPClient http;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/heartbeat";
 
-        http.begin(url);
+        _beginHttp(http, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(3000);
+        http.setTimeout(5000);
 
         String micStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
         String spkStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
@@ -156,8 +168,8 @@ public:
         HTTPClient http;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/pending";
 
-        http.begin(url);
-        http.setTimeout(3000);
+        _beginHttp(http, url);
+        http.setTimeout(5000);
 
         int httpCode = http.GET();
         if (httpCode == 200) {
@@ -238,9 +250,9 @@ public:
         HTTPClient http;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/" + cmdId + "/ack";
 
-        http.begin(url);
+        _beginHttp(http, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(3000);
+        http.setTimeout(5000);
 
         String payload = "{";
         payload += "\"status\":\"" + status + "\",";
@@ -269,9 +281,9 @@ public:
         HTTPClient http;
         String url = String(BACKEND_BASE_URL) + "/api/v1/voice/interact";
 
-        http.begin(url);
+        _beginHttp(http, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(18000); // 18s timeout for LLM reasoning
+        http.setTimeout(25000); // 25s timeout for cloud LLM reasoning
 
         // Escape JSON quotes
         String cleanPrompt = prompt;
