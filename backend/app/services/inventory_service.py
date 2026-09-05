@@ -245,8 +245,8 @@ class InventoryService:
             # Restock existing product
             stock_before = existing.current_stock
             existing.current_stock += Decimal(str(stock))
-            if selling_price > 0:
-                existing.selling_price = Decimal(str(round(selling_price, 2)))
+            if selling_price and Decimal(str(selling_price)) > Decimal("0"):
+                existing.selling_price = Decimal(str(selling_price)).quantize(Decimal("0.01"))
 
             txn = InventoryTransaction(
                 business_id=business_id,
@@ -272,15 +272,23 @@ class InventoryService:
             }
 
         # Create new product
-        p_price = Decimal(str(round(purchase_price, 2))) if purchase_price else Decimal(str(round(selling_price * 0.8, 2)))
+        dec_sell_price = Decimal(str(selling_price)).quantize(Decimal("0.01"))
+        dec_purch_price = (
+            Decimal(str(purchase_price)).quantize(Decimal("0.01"))
+            if purchase_price
+            else (dec_sell_price * Decimal("0.80")).quantize(Decimal("0.01"))
+        )
+        dec_stock = Decimal(str(stock))
+        dec_min_stock = Decimal(str(minimum_stock))
+
         new_prod = Product(
             business_id=business_id,
             name=clean_name,
             unit=unit.strip().lower(),
-            selling_price=Decimal(str(round(selling_price, 2))),
-            purchase_price=p_price,
-            current_stock=Decimal(str(stock)),
-            minimum_stock=Decimal(str(minimum_stock)),
+            selling_price=dec_sell_price,
+            purchase_price=dec_purch_price,
+            current_stock=dec_stock,
+            minimum_stock=dec_min_stock,
             is_active=True,
         )
         db.add(new_prod)

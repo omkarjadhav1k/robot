@@ -238,9 +238,6 @@ async def reason_with_gemini(
         "generationConfig": {
             "temperature": 0.2,  # Low temperature for strict, reliable tool selection
             "maxOutputTokens": 200,
-            "thinkingConfig": {
-                "thinkingBudget": 0  # Ultra-low latency
-            },
         },
     }
 
