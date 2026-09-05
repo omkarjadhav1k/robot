@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: str = ""
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
-    WHATSAPP_TEMPLATE_NAME: str = "invoice_bill"
+    WHATSAPP_TEMPLATE_NAME: str = "invoice_bill_sent"
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     WHATSAPP_API_VERSION: str = "v21.0"
     WHATSAPP_DEFAULT_COUNTRY_CODE: str = "91"

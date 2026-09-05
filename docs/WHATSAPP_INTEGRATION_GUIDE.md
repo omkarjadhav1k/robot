@@ -46,7 +46,7 @@ sequenceDiagram
 
 To ensure 100% compliance with WhatsApp Business policies and 24-hour utility window requirements, the system uses an approved **Utility** template.
 
-* **Template Name**: `invoice_bill`
+* **Template Name**: `invoice_bill_sent`
 * **Category**: `UTILITY`
 * **Language**: `en` (English / en_US)
 * **Header Type**: `DOCUMENT` (Attached invoice PDF)
