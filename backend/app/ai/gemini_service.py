@@ -55,7 +55,10 @@ async def generate_gemini_response(prompt: str, api_key: Optional[str] = None) -
         },
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 200,
+            "maxOutputTokens": 100,
+            "thinkingConfig": {
+                "thinkingBudget": 0
+            }
         },
     }
 

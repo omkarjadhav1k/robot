@@ -42,9 +42,18 @@ private:
         int start = json.indexOf(searchKey);
         if (start == -1) return "";
         start += searchKey.length();
-        int end = json.indexOf("\"", start);
-        if (end == -1) return "";
-        return json.substring(start, end);
+        int end = start;
+        while (end < json.length()) {
+            if (json[end] == '"' && json[end - 1] != '\\') break;
+            end++;
+        }
+        if (end >= json.length()) return "";
+        String val = json.substring(start, end);
+        val.replace("\\\"", "\"");
+        val.replace("\\n", " ");
+        val.replace("\\r", "");
+        val.replace("\\\\", "\\");
+        return val;
     }
 
     // Helper: Extract JSON int value by key
