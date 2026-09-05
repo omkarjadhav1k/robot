@@ -242,19 +242,45 @@ async def process_voice_interaction(
         logger.info("Handling tool call: %s with args: %s", fn_name, args)
 
         if fn_name == "get_stock":
-            product_name = args.get("product_name", "")
-            stock_info = InventoryService.get_stock(db, product_name, session.business_id)
-            business_data = stock_info
-            action_type = "business_query"
-            if stock_info.get("found"):
-                response_text = (
-                    f"{stock_info['name']} has {stock_info['current_stock']:.1f} {stock_info['unit']} in stock "
-                    f"at ₹{stock_info['selling_price']:.2f} per {stock_info['unit']}."
-                )
-                if stock_info.get("is_low_stock"):
-                    response_text += " Note: stock is running low!"
+            product_name = args.get("product_name", "").strip()
+            # If user asks for generic stock / all products, gracefully redirect to list_all_products
+            if not product_name or product_name.lower() in (
+                "all", "all items", "all products", "stock", "items", "sagle", "sab",
+                "all stock", "shop", "everything", "the product", "product", "products", "list"
+            ):
+                products = InventoryService.list_all_products(db, session.business_id, limit=30)
+                business_data = {"products": products, "total_count": len(products)}
+                action_type = "business_query"
+                if products:
+                    summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in products[:5]])
+                    more = f" and {len(products) - 5} more" if len(products) > 5 else ""
+                    response_text = f"We have {len(products)} products in stock: {summary}{more}."
+                else:
+                    response_text = "There are currently no products in store inventory."
             else:
-                response_text = f"Sorry, '{product_name}' was not found in inventory."
+                stock_info = InventoryService.get_stock(db, product_name, session.business_id)
+                business_data = stock_info
+                action_type = "business_query"
+                if stock_info.get("found"):
+                    response_text = (
+                        f"{stock_info['name']} has {stock_info['current_stock']:.1f} {stock_info['unit']} in stock "
+                        f"at ₹{stock_info['selling_price']:.2f} per {stock_info['unit']}."
+                    )
+                    if stock_info.get("is_low_stock"):
+                        response_text += " Note: stock is running low!"
+                else:
+                    response_text = f"Sorry, '{product_name}' was not found in inventory."
+
+        elif fn_name in ("list_all_products", "get_all_products", "list_inventory"):
+            products = InventoryService.list_all_products(db, session.business_id, limit=30)
+            business_data = {"products": products, "total_count": len(products)}
+            action_type = "business_query"
+            if products:
+                summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in products[:5]])
+                more = f" and {len(products) - 5} more" if len(products) > 5 else ""
+                response_text = f"We have {len(products)} products in stock: {summary}{more}."
+            else:
+                response_text = "There are currently no products in store inventory."
 
         elif fn_name == "get_low_stock_items":
             low_items = InventoryService.get_low_stock_items(db, session.business_id)

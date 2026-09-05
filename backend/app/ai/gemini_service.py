@@ -17,7 +17,9 @@ SYSTEM_INSTRUCTION = (
     "2. You MUST use the provided function tools to query the database whenever the user asks about stock, bills, sales, customers, or to create a bill.\n"
     "3. You MUST use hardware tools (control_relay, blink_led) when asked to switch or toggle appliances, lights, or relays.\n"
     "4. When asked to add, register, or create a new product/sample product in the store/inventory, use the add_product tool.\n"
-    "5. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "5. When asked for all products, inventory list, stock count, or overview (e.g., 'check stock', 'check all products', 'build a list', 'how many items in stock', 'sagle kiti product aahe' in Marathi/Hindi/English), use the list_all_products tool.\n"
+    "6. You understand English, Hindi, and Marathi. When user speaks in Marathi or Hindi, understand and respond appropriately.\n"
+    "7. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
 )
 
 FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
@@ -28,7 +30,7 @@ BUSINESS_TOOLS = [
         "functionDeclarations": [
             {
                 "name": "get_stock",
-                "description": "Check current stock level, unit, and authoritative selling price of a product in inventory.",
+                "description": "Check current stock level, unit, and authoritative selling price of a SPECIFIC product in inventory (e.g., 'sugar', 'milk').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -41,8 +43,16 @@ BUSINESS_TOOLS = [
                 },
             },
             {
+                "name": "list_all_products",
+                "description": "List all products in the shop/inventory, count total products, or get full stock overview (e.g. 'check all products', 'build a list', 'how many items in stock', 'check stock', 'sagle kiti product aahe').",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {},
+                },
+            },
+            {
                 "name": "get_low_stock_items",
-                "description": "Get a list of products whose inventory is below the minimum reorder threshold.",
+                "description": "Get a list of products that are LOW on stock or below the minimum reorder threshold (e.g. 'what is low on stock', 'kam stock wale saman').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {},
