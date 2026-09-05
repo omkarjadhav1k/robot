@@ -1,47 +1,54 @@
-"""Robot telemetry, registration, status, and command lifecycle endpoints."""
+"""Robot telemetry, registration, status, and command lifecycle endpoints backed by PostgreSQL."""
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+import logging
+from typing import List, Optional
 import uuid
-from fastapi import APIRouter, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.database.session import get_db
+from app.models.robot import RobotDevice
+from app.models.robot_command import CommandStatus, RobotCommand as DBRobotCommand
 from app.schemas.robot import (
+    RobotCommand,
+    RobotCommandAck,
+    RobotCommandCreate,
     RobotHeartbeatRequest,
     RobotHeartbeatResponse,
     RobotStatusResponse,
-    RobotCommandCreate,
-    RobotCommand,
-    RobotCommandAck,
 )
+from app.services.robot_service import RobotService
 
+logger = logging.getLogger("business_ai_robot.robots_api")
 router = APIRouter()
 settings = get_settings()
 
-# In-memory registry for Phase 1 & 4 (transfers to PostgreSQL in Phase 2/Milestone)
-_robot_registry: Dict[str, dict] = {}
 
-
-def get_robot_record(robot_id: str) -> dict:
-    """Retrieve or initialize an in-memory robot record."""
-    if robot_id not in _robot_registry:
-        _robot_registry[robot_id] = {
-            "robot_id": robot_id,
-            "last_heartbeat": None,
-            "firmware_version": None,
-            "wifi_rssi": None,
-            "relays_state": [0, 0, 0, 0],
-            "peripherals": {
-                "mic": "virtual",
-                "speaker": "virtual",
-                "oled": "virtual",
-                "relays": "ok",
-            },
-            "registered_at": datetime.now(timezone.utc),
-            "pending_commands": [],
-            "command_history": [],
-        }
-    return _robot_registry[robot_id]
+def _to_schema_command(cmd: DBRobotCommand, robot_str_id: str) -> RobotCommand:
+    """Convert database RobotCommand entity to API response schema."""
+    status_map = {
+        CommandStatus.PENDING: "pending",
+        CommandStatus.VALIDATED: "pending",
+        CommandStatus.SENT: "dispatched",
+        CommandStatus.RECEIVED: "dispatched",
+        CommandStatus.EXECUTING: "dispatched",
+        CommandStatus.SUCCESS: "acknowledged",
+        CommandStatus.FAILED: "failed",
+    }
+    return RobotCommand(
+        command_id=cmd.command_id,
+        robot_id=robot_str_id,
+        action=cmd.action,
+        params=cmd.payload or {},
+        priority=1,
+        status=status_map.get(cmd.status, "pending"),
+        created_at=cmd.created_at,
+        dispatched_at=cmd.updated_at if cmd.status in (CommandStatus.SENT, CommandStatus.RECEIVED, CommandStatus.EXECUTING) else None,
+        acknowledged_at=cmd.updated_at if cmd.status in (CommandStatus.SUCCESS, CommandStatus.FAILED) else None,
+        result=cmd.result_payload,
+    )
 
 
 @router.post(
@@ -53,22 +60,26 @@ def get_robot_record(robot_id: str) -> dict:
 async def post_robot_heartbeat(
     robot_id: str = Path(..., description="The unique robot ID"),
     heartbeat: RobotHeartbeatRequest = ...,
+    db: Session = Depends(get_db),
 ) -> RobotHeartbeatResponse:
-    """Process incoming heartbeat from physical robot (ESP32)."""
+    """Process incoming heartbeat from physical robot (ESP32) and persist in PostgreSQL."""
     now = datetime.now(timezone.utc)
-    record = get_robot_record(robot_id)
+    robot = RobotService.record_heartbeat(
+        db=db,
+        robot_id=robot_id,
+        firmware_version=heartbeat.firmware_version,
+        wifi_rssi=heartbeat.wifi_rssi,
+        relays_state=heartbeat.relays_state,
+        peripherals=heartbeat.peripherals,
+    )
 
-    record["last_heartbeat"] = now
-    record["firmware_version"] = heartbeat.firmware_version
-    record["wifi_rssi"] = heartbeat.wifi_rssi
-    if heartbeat.peripherals:
-        record["peripherals"].update(heartbeat.peripherals)
-    record["relays_state"] = heartbeat.relays_state
-    record["uptime_seconds"] = heartbeat.uptime_seconds
-
-    # Count pending commands
-    pending_count = len(
-        [cmd for cmd in record.get("pending_commands", []) if cmd["status"] == "pending"]
+    pending_count = (
+        db.query(DBRobotCommand)
+        .filter(
+            DBRobotCommand.robot_id == robot.id,
+            DBRobotCommand.status == CommandStatus.PENDING,
+        )
+        .count()
     )
 
     return RobotHeartbeatResponse(
@@ -87,40 +98,27 @@ async def post_robot_heartbeat(
 )
 async def get_robot_status(
     robot_id: str = Path(..., description="The unique robot ID"),
+    db: Session = Depends(get_db),
 ) -> RobotStatusResponse:
-    """Check if robot is currently online and retrieve last known state."""
-    if robot_id not in _robot_registry:
+    """Check if robot is currently online and retrieve authoritative state from PostgreSQL."""
+    robot = db.query(RobotDevice).filter(RobotDevice.robot_id == robot_id).first()
+    if not robot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Robot '{robot_id}' has not registered or sent any heartbeat",
         )
 
-    record = _robot_registry[robot_id]
-    last_hb: Optional[datetime] = record["last_heartbeat"]
-    now = datetime.now(timezone.utc)
-
-    is_online = False
-    seconds_since: Optional[float] = None
-
-    if last_hb is not None:
-        delta = (now - last_hb).total_seconds()
-        seconds_since = round(delta, 2)
-        is_online = delta <= settings.HEARTBEAT_TIMEOUT_SECONDS
-
-    pending_count = len(
-        [cmd for cmd in record.get("pending_commands", []) if cmd["status"] == "pending"]
-    )
-
+    st = RobotService.get_robot_status(db, robot_id)
     return RobotStatusResponse(
-        robot_id=robot_id,
-        is_online=is_online,
-        last_heartbeat=last_hb,
-        firmware_version=record.get("firmware_version"),
-        wifi_rssi=record.get("wifi_rssi"),
-        relays_state=record.get("relays_state", [0, 0, 0, 0]),
-        peripherals=record.get("peripherals", {}),
-        seconds_since_last_heartbeat=seconds_since,
-        pending_commands_count=pending_count,
+        robot_id=st["robot_id"],
+        is_online=st["is_online"],
+        last_heartbeat=st["last_heartbeat"],
+        firmware_version=st["firmware_version"],
+        wifi_rssi=st["wifi_rssi"],
+        relays_state=st["relays_state"],
+        peripherals=st["peripherals"],
+        seconds_since_last_heartbeat=st["seconds_since_last_heartbeat"],
+        pending_commands_count=st["pending_commands_count"],
     )
 
 
@@ -129,35 +127,23 @@ async def get_robot_status(
     response_model=List[RobotStatusResponse],
     summary="List all known robots and their statuses",
 )
-async def list_robots() -> List[RobotStatusResponse]:
-    """List all registered robots."""
-    now = datetime.now(timezone.utc)
+async def list_robots(db: Session = Depends(get_db)) -> List[RobotStatusResponse]:
+    """List all registered robots in PostgreSQL."""
+    robots = db.query(RobotDevice).all()
     results: List[RobotStatusResponse] = []
-
-    for robot_id, record in _robot_registry.items():
-        last_hb = record["last_heartbeat"]
-        is_online = False
-        seconds_since = None
-        if last_hb:
-            delta = (now - last_hb).total_seconds()
-            seconds_since = round(delta, 2)
-            is_online = delta <= settings.HEARTBEAT_TIMEOUT_SECONDS
-
-        pending_count = len(
-            [cmd for cmd in record.get("pending_commands", []) if cmd["status"] == "pending"]
-        )
-
+    for r in robots:
+        st = RobotService.get_robot_status(db, r.robot_id)
         results.append(
             RobotStatusResponse(
-                robot_id=robot_id,
-                is_online=is_online,
-                last_heartbeat=last_hb,
-                firmware_version=record.get("firmware_version"),
-                wifi_rssi=record.get("wifi_rssi"),
-                relays_state=record.get("relays_state", [0, 0, 0, 0]),
-                peripherals=record.get("peripherals", {}),
-                seconds_since_last_heartbeat=seconds_since,
-                pending_commands_count=pending_count,
+                robot_id=st["robot_id"],
+                is_online=st["is_online"],
+                last_heartbeat=st["last_heartbeat"],
+                firmware_version=st["firmware_version"],
+                wifi_rssi=st["wifi_rssi"],
+                relays_state=st["relays_state"],
+                peripherals=st["peripherals"],
+                seconds_since_last_heartbeat=st["seconds_since_last_heartbeat"],
+                pending_commands_count=st["pending_commands_count"],
             )
         )
     return results
@@ -177,26 +163,17 @@ async def list_robots() -> List[RobotStatusResponse]:
 async def create_robot_command(
     robot_id: str = Path(..., description="Target robot ID"),
     cmd_in: RobotCommandCreate = ...,
+    db: Session = Depends(get_db),
 ) -> RobotCommand:
-    """Queue an action (e.g. set_relay, blink_led) for the physical robot to execute."""
-    record = get_robot_record(robot_id)
-    cmd_id = f"cmd_{uuid.uuid4().hex[:8]}"
-
-    command_obj = {
-        "command_id": cmd_id,
-        "robot_id": robot_id,
-        "action": cmd_in.action,
-        "params": cmd_in.params,
-        "priority": cmd_in.priority,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc),
-        "dispatched_at": None,
-        "acknowledged_at": None,
-        "result": None,
-    }
-
-    record["pending_commands"].append(command_obj)
-    return RobotCommand(**command_obj)
+    """Queue an action (e.g. set_relay, blink_led) for the physical robot in PostgreSQL."""
+    cmd = RobotService.queue_command(
+        db=db,
+        robot_id=robot_id,
+        action=cmd_in.action,
+        params=cmd_in.params,
+        priority=cmd_in.priority,
+    )
+    return _to_schema_command(cmd, robot_id)
 
 
 @router.get(
@@ -206,17 +183,13 @@ async def create_robot_command(
 )
 async def get_pending_commands(
     robot_id: str = Path(..., description="Robot polling for commands"),
+    db: Session = Depends(get_db),
 ) -> List[RobotCommand]:
     """Called by the physical ESP32 to poll for pending action commands."""
-    record = get_robot_record(robot_id)
-    pending = [cmd for cmd in record["pending_commands"] if cmd["status"] == "pending"]
-
-    now = datetime.now(timezone.utc)
-    for cmd in pending:
-        cmd["status"] = "dispatched"
-        cmd["dispatched_at"] = now
-
-    return [RobotCommand(**cmd) for cmd in pending]
+    cmd = RobotService.pop_pending_command(db, robot_id)
+    if not cmd:
+        return []
+    return [_to_schema_command(cmd, robot_id)]
 
 
 @router.post(
@@ -228,39 +201,21 @@ async def acknowledge_robot_command(
     robot_id: str = Path(..., description="The robot ID"),
     command_id: str = Path(..., description="The command ID being acknowledged"),
     ack: RobotCommandAck = ...,
+    db: Session = Depends(get_db),
 ) -> RobotCommand:
-    """Called by the physical ESP32 to confirm command execution and update hardware state."""
-    record = get_robot_record(robot_id)
-    target_cmd = None
-
-    for cmd in record["pending_commands"]:
-        if cmd["command_id"] == command_id:
-            target_cmd = cmd
-            break
-
-    if not target_cmd:
+    """Called by the physical ESP32 to confirm command execution and update PostgreSQL state."""
+    cmd = RobotService.acknowledge_command(
+        db=db,
+        robot_id=robot_id,
+        command_id=command_id,
+        status=ack.status,
+        message=ack.message,
+        relays_state=ack.relays_state,
+        error=ack.error,
+    )
+    if not cmd:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Command '{command_id}' not found for robot '{robot_id}'",
+            detail=f"Command '{command_id}' not found",
         )
-
-    now = datetime.now(timezone.utc)
-    target_cmd["status"] = "acknowledged" if ack.status == "success" else "failed"
-    target_cmd["acknowledged_at"] = now
-    target_cmd["result"] = {
-        "status": ack.status,
-        "message": ack.message,
-        "relays_state": ack.relays_state,
-        "error": ack.error,
-    }
-
-    if ack.relays_state is not None:
-        record["relays_state"] = ack.relays_state
-
-    # Move from pending list to command history
-    record["pending_commands"] = [
-        c for c in record["pending_commands"] if c["command_id"] != command_id
-    ]
-    record["command_history"].append(target_cmd)
-
-    return RobotCommand(**target_cmd)
+    return _to_schema_command(cmd, robot_id)

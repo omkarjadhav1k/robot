@@ -87,10 +87,18 @@ class VoiceInteractRequest(BaseModel):
     """Voice or text interaction prompt for the Central Brain."""
     text: str = Field(..., description="User voice prompt or transcribed text")
     robot_id: str = Field(default="ROBOT-001", description="Target robot ID")
+    conversation_id: Optional[str] = Field(default=None, description="Persistent conversation session ID")
+    business_id: Optional[str] = Field(default=None, description="Business tenant ID")
 
 
 class VoiceInteractResponse(BaseModel):
     """Result of AI intent reasoning, including speech response and executed hardware command."""
     response_text: str = Field(..., description="Speech response text to be spoken by robot/virtual speaker")
-    action_type: str = Field(default="conversation", description="conversation, hardware_action, business_query")
+    action_type: str = Field(default="conversation", description="conversation, hardware_action, business_query, billing_action")
+    conversation_id: str = Field(..., description="Conversation session ID for subsequent turns")
+    immediate_ack: Optional[str] = Field(default=None, description="Acoustic/text pre-acknowledgment phrase")
+    state: str = Field(default="IDLE", description="Current conversation state (IDLE, AWAITING_INPUT, AWAITING_CONFIRMATION, etc.)")
+    business_data: Optional[Dict[str, Any]] = Field(default=None, description="Structured business data returned from PostgreSQL")
+    latencies: Optional[Dict[str, float]] = Field(default=None, description="Stage latency breakdown in milliseconds")
     command_dispatched: Optional[RobotCommand] = None
+

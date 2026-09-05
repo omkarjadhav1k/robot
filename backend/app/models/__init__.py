@@ -12,6 +12,11 @@ from app.models.billing import (
     PaymentStatus,
 )
 from app.models.business import Business
+from app.models.conversation import (
+    ConversationMessage,
+    ConversationSession,
+    ConversationState,
+)
 from app.models.instruction import BusinessInstruction
 from app.models.product import (
     InventoryTransaction,
@@ -59,4 +64,7 @@ __all__ = [
     "CommandStatus",
     "AuditLog",
     "ActorType",
+    "ConversationSession",
+    "ConversationMessage",
+    "ConversationState",
 ]

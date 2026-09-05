@@ -18,6 +18,7 @@ private:
     unsigned long _lastHeartbeatTime;
     unsigned long _lastWifiCheckTime;
     bool _isConnected;
+    String _conversationId;
 
     bool _beginHttp(HTTPClient& http, WiFiClientSecure& sec, WiFiClient& plain, const String& url) {
         if (url.startsWith("https://")) {
@@ -72,7 +73,16 @@ private:
 public:
     RobotNetworkClient(StatusLED* led, RelayController* relays, DisplayManager* display)
         : _led(led), _relays(relays), _display(display),
-          _lastHeartbeatTime(0), _lastWifiCheckTime(0), _isConnected(false) {}
+          _lastHeartbeatTime(0), _lastWifiCheckTime(0), _isConnected(false), _conversationId("") {}
+
+    void resetConversation() {
+        _conversationId = "";
+        Serial.println(F("🔄 Conversation session reset on ESP32."));
+    }
+
+    String getConversationId() const {
+        return _conversationId;
+    }
 
     void begin() {
         Serial.println(F("\n[WIFI] Initializing Wi-Fi connection..."));
@@ -98,40 +108,35 @@ public:
             Serial.print(F("[WIFI] RSSI: "));
             Serial.print(WiFi.RSSI());
             Serial.println(F(" dBm"));
-
-            _led->setPattern(PATTERN_ONLINE);
             _display->showStatus("ONLINE", WiFi.localIP().toString(), _relays->getRelaysJson());
+            _led->setPattern(PATTERN_ONLINE);
         } else {
-            _isConnected = false;
-            Serial.println(F("\n[WIFI] Initial connection timed out. Will retry in background."));
+            Serial.println(F("\n❌ Wi-Fi Connection failed!"));
+            _display->showStatus("WIFI ERROR", "Failed to connect");
             _led->setPattern(PATTERN_ERROR);
-            _display->showStatus("WIFI FAILED", "Retrying...");
         }
     }
 
     void update() {
-        unsigned long now = millis();
-
-        // 1. Maintain Wi-Fi
-        if (now - _lastWifiCheckTime >= WIFI_RETRY_INTERVAL_MS) {
-            _lastWifiCheckTime = now;
-            if (WiFi.status() != WL_CONNECTED) {
-                _isConnected = false;
-                _led->setPattern(PATTERN_CONNECTING);
+        if (WiFi.status() != WL_CONNECTED) {
+            _isConnected = false;
+            unsigned long now = millis();
+            if (now - _lastWifiCheckTime > 5000) {
+                _lastWifiCheckTime = now;
                 Serial.println(F("[WIFI] Disconnected! Reconnecting..."));
                 WiFi.reconnect();
-                return;
-            } else if (!_isConnected) {
-                _isConnected = true;
-                _led->setPattern(PATTERN_ONLINE);
-                _display->showStatus("ONLINE", WiFi.localIP().toString(), _relays->getRelaysJson());
             }
+            return;
         }
 
-        // 2. Periodic Heartbeat & Command Polling
-        if (_isConnected && (now - _lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS)) {
+        _isConnected = true;
+        unsigned long now = millis();
+
+        // Send Heartbeat periodically
+        if (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL_MS || _lastHeartbeatTime == 0) {
             _lastHeartbeatTime = now;
             sendHeartbeat();
+            pollPendingCommands();
         }
     }
 
@@ -147,39 +152,23 @@ public:
         http.addHeader("Content-Type", "application/json");
         http.setTimeout(12000);
 
-        String micStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
-        String spkStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
-        String oledStatus = VIRTUAL_DISPLAY_MODE ? "virtual" : "ok";
-
         String payload = "{";
         payload += "\"robot_id\":\"" + String(ROBOT_ID) + "\",";
         payload += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
         payload += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
         payload += "\"uptime_seconds\":" + String(millis() / 1000) + ",";
         payload += "\"relays_state\":" + _relays->getRelaysJson() + ",";
-        payload += "\"peripherals\":{";
-        payload += "\"mic\":\"" + micStatus + "\",";
-        payload += "\"speaker\":\"" + spkStatus + "\",";
-        payload += "\"oled\":\"" + oledStatus + "\",";
-        payload += "\"relays\":\"ok\"";
-        payload += "}";
+        payload += "\"peripherals\":{\"mic\":\"ok\",\"speaker\":\"ok\",\"oled\":\"ok\",\"relays\":\"ok\"}";
         payload += "}";
 
         int httpCode = http.POST(payload);
-        if (httpCode == 200) {
-            String response = http.getString();
-            int pendingCount = _extractJsonInt(response, "pending_commands_count", 0);
-            if (pendingCount > 0) {
-                Serial.printf("[ROBOT] %d pending command(s) waiting on server! Fetching...\n", pendingCount);
-                fetchAndExecuteCommands();
-            }
-        } else {
+        if (httpCode != 200) {
             Serial.printf("[HEARTBEAT] POST failed with HTTP code: %d\n", httpCode);
         }
         _endHttp(http, sec, plain);
     }
 
-    void fetchAndExecuteCommands() {
+    void pollPendingCommands() {
         if (WiFi.status() != WL_CONNECTED) return;
 
         HTTPClient http;
@@ -188,65 +177,46 @@ public:
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/pending";
 
         _beginHttp(http, sec, plain, url);
-        http.setTimeout(12000);
+        http.setTimeout(10000);
 
         int httpCode = http.GET();
         if (httpCode == 200) {
-            String body = http.getString();
-            parseAndExecuteCommands(body);
-        } else {
-            Serial.printf("[COMMAND] GET pending failed, code: %d\n", httpCode);
+            String payload = http.getString();
+            if (payload != "[]" && payload.length() > 2) {
+                Serial.printf("[CMD] Received command payload: %s\n", payload.c_str());
+                int start = payload.indexOf('{');
+                int end = payload.lastIndexOf('}');
+                if (start != -1 && end != -1) {
+                    String singleCmd = payload.substring(start, end + 1);
+                    executeSingleCommand(singleCmd);
+                }
+            }
         }
         _endHttp(http, sec, plain);
-    }
-
-    void parseAndExecuteCommands(const String& jsonArray) {
-        // The endpoint returns a JSON array of commands: [{"command_id": "...", "action": "...", ...}]
-        int searchIdx = 0;
-        while (true) {
-            int cmdStart = jsonArray.indexOf("{\"command_id\":", searchIdx);
-            if (cmdStart == -1) break;
-
-            int cmdEnd = jsonArray.indexOf("}", cmdStart);
-            if (cmdEnd == -1) break;
-
-            String cmdJson = jsonArray.substring(cmdStart, cmdEnd + 1);
-            executeSingleCommand(cmdJson);
-
-            searchIdx = cmdEnd + 1;
-        }
     }
 
     void executeSingleCommand(const String& cmdJson) {
         String cmdId = _extractJsonString(cmdJson, "command_id");
         String action = _extractJsonString(cmdJson, "action");
 
-        Serial.printf("[COMMAND] Received: ID=%s, Action=%s\n", cmdId.c_str(), action.c_str());
-        _led->setPattern(PATTERN_COMMAND_EXEC);
-
+        Serial.printf("[EXEC] Processing command %s: %s\n", cmdId.c_str(), action.c_str());
         bool success = false;
         String message = "";
 
         if (action == "set_relay") {
-            int relayNum = _extractJsonInt(cmdJson, "relay", 0);
-            String stateStr = _extractJsonString(cmdJson, "state");
-            bool state = (stateStr == "on" || stateStr == "1" || stateStr == "true");
-
-            success = _relays->setRelay(relayNum, state);
-            if (success) {
-                message = "Relay " + String(relayNum) + " turned " + (state ? "ON" : "OFF");
-                Serial.printf("[RELAY] %s\n", message.c_str());
-                _display->showStatus("EXECUTED", message, _relays->getRelaysJson());
-            } else {
-                message = "Invalid relay index: " + String(relayNum);
-            }
-        } else if (action == "set_all_relays") {
-            String stateStr = _extractJsonString(cmdJson, "state");
-            bool state = (stateStr == "on" || stateStr == "1" || stateStr == "true");
-            _relays->setAllRelays(state);
+            int relay = _extractJsonInt(cmdJson, "relay", 1);
+            String state = _extractJsonString(cmdJson, "state");
+            bool turnOn = (state == "on" || state == "1" || state == "true");
+            _relays->setRelay(relay, turnOn);
             success = true;
-            message = "All relays turned " + String(state ? "ON" : "OFF");
-            Serial.printf("[RELAY] %s\n", message.c_str());
+            message = "Relay " + String(relay) + " set to " + (turnOn ? "ON" : "OFF");
+            _display->showStatus("RELAY SWITCHED", message, _relays->getRelaysJson());
+        } else if (action == "set_all_relays") {
+            String state = _extractJsonString(cmdJson, "state");
+            bool turnOn = (state == "on" || state == "1" || state == "true");
+            _relays->setAll(turnOn);
+            success = true;
+            message = "All relays set to " + String(turnOn ? "ON" : "OFF");
             _display->showStatus("EXECUTED", message, _relays->getRelaysJson());
         } else if (action == "blink_led") {
             _led->setPattern(PATTERN_COMMAND_EXEC);
@@ -292,6 +262,12 @@ public:
             return;
         }
 
+        // Check for session reset trigger
+        if (prompt.equalsIgnoreCase("new chat") || prompt.equalsIgnoreCase("reset")) {
+            resetConversation();
+            return;
+        }
+
         Serial.println();
         Serial.println(F("--------------------------------------------------"));
         Serial.print(F("👤 YOU: "));
@@ -312,7 +288,11 @@ public:
         String cleanPrompt = prompt;
         cleanPrompt.replace("\"", "\\\"");
 
-        String payload = "{\"text\":\"" + cleanPrompt + "\",\"robot_id\":\"" + ROBOT_ID + "\"}";
+        String payload = "{\"text\":\"" + cleanPrompt + "\",\"robot_id\":\"" + ROBOT_ID + "\"";
+        if (_conversationId.length() > 0) {
+            payload += ",\"conversation_id\":\"" + _conversationId + "\"";
+        }
+        payload += "}";
 
         int httpCode = http.POST(payload);
         if (httpCode == 200) {
@@ -320,6 +300,12 @@ public:
             String aiResponse = _extractJsonString(respBody, "response_text");
             if (aiResponse.length() == 0) {
                 aiResponse = respBody;
+            }
+
+            // Retain persistent conversation_id from response
+            String returnedConvId = _extractJsonString(respBody, "conversation_id");
+            if (returnedConvId.length() > 0) {
+                _conversationId = returnedConvId;
             }
 
             Serial.println();
