@@ -244,6 +244,7 @@ class BillingService:
             "recent_bills": [
                 {
                     "bill_number": b.bill_number,
+                    "customer_name": b.customer.name if b.customer else "Walk-in Customer",
                     "total_amount": float(b.total_amount),
                     "status": b.payment_status.value,
                     "time": b.created_at.strftime("%H:%M"),

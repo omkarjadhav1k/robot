@@ -109,3 +109,24 @@ class CustomerService:
         customer.outstanding_balance = new_balance
         db.add(customer)
         return new_balance
+
+    @staticmethod
+    def list_all_customers(
+        db: Session,
+        business_id: Optional[Any] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """List registered customers with their contact info and outstanding balances."""
+        q = db.query(Customer)
+        if business_id:
+            q = q.filter(Customer.business_id == business_id)
+        customers = q.order_by(Customer.name.asc()).limit(limit).all()
+        return [
+            {
+                "customer_id": str(c.id),
+                "name": c.name,
+                "phone": c.phone,
+                "outstanding_balance": float(c.outstanding_balance),
+            }
+            for c in customers
+        ]

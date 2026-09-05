@@ -19,7 +19,8 @@ SYSTEM_INSTRUCTION = (
     "4. When asked to add, register, or create a new product/sample product in the store/inventory, use the add_product tool.\n"
     "5. When asked for all products, inventory list, stock count, or overview (e.g., 'check stock', 'check all products', 'build a list', 'how many items in stock', 'sagle kiti product aahe' in Marathi/Hindi/English), use the list_all_products tool.\n"
     "6. You understand English, Hindi, and Marathi. When user speaks in Marathi or Hindi, understand and respond appropriately.\n"
-    "7. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "7. When asked who was billed today, which customers got bills, or customer names for bills (e.g. 'kona konala bill dile', 'who received bills', 'customer name', 'show bills list'), use the get_todays_bills tool.\n"
+    "8. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
 )
 
 FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
@@ -60,7 +61,7 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "get_todays_bills",
-                "description": "Retrieve today's verified bills count, total revenue, and list of sales.",
+                "description": "Retrieve today's verified bills, list of customers who were billed, total revenue, and bill amounts (e.g. 'who was billed today', 'kona konala bill dile', 'customer names for bills', 'today bills').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {},
@@ -68,13 +69,13 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "get_customer_balance",
-                "description": "Check a customer's outstanding credit balance and account details by name or phone.",
+                "description": "Check a customer's outstanding balance, or list registered customer names and credit status (e.g. 'check Ramesh balance', 'list customers', 'customer name').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "customer_name": {
                             "type": "STRING",
-                            "description": "The name or phone number of the customer (e.g. 'Ramesh', 'Suresh').",
+                            "description": "The name or phone number of the customer (e.g. 'Ramesh', 'Suresh'), or 'all' to list registered customers.",
                         }
                     },
                     "required": ["customer_name"],

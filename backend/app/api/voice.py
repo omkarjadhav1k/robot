@@ -296,20 +296,46 @@ async def process_voice_interaction(
             bills_info = BillingService.get_todays_bills(db, session.business_id)
             business_data = bills_info
             action_type = "business_query"
-            response_text = (
-                f"Today there are {bills_info['total_bills']} bills generated "
-                f"totaling ₹{bills_info['total_revenue']:.2f}."
-            )
+            total_b = bills_info.get("total_bills", 0)
+            total_rev = bills_info.get("total_revenue", 0.0)
+            recent_b = bills_info.get("recent_bills", [])
+
+            if total_b == 0:
+                response_text = "No bills have been generated today."
+            else:
+                cust_details = []
+                for b in recent_b[:5]:
+                    c_name = b.get("customer_name") or "Walk-in Customer"
+                    amt = b.get("total_amount", 0.0)
+                    cust_details.append(f"{c_name} (₹{amt:.2f})")
+                cust_str = ", ".join(cust_details)
+                more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
+                response_text = f"Today {total_b} bills were given totaling ₹{total_rev:.2f} to: {cust_str}{more_suffix}."
 
         elif fn_name == "get_customer_balance":
-            cust_name = args.get("customer_name", "")
-            balance_info = CustomerService.get_customer_balance(db, cust_name, session.business_id)
-            business_data = balance_info
-            action_type = "business_query"
-            if balance_info.get("found"):
-                response_text = f"{balance_info['name']}'s outstanding balance is ₹{balance_info['outstanding_balance']:.2f}."
+            cust_name = args.get("customer_name", "").strip()
+            # If user asks for general customer names or customer list
+            if not cust_name or cust_name.lower() in (
+                "all", "list", "name", "customer name", "customers", "sab", "sagle",
+                "sagle customer", "customer", "all customers", "customer list"
+            ):
+                custs = CustomerService.list_all_customers(db, session.business_id)
+                business_data = {"customers": custs}
+                action_type = "business_query"
+                if custs:
+                    names_str = ", ".join([f"{c['name']} (₹{c['outstanding_balance']:.2f} due)" for c in custs[:5]])
+                    more_suffix = f" and {len(custs) - 5} more" if len(custs) > 5 else ""
+                    response_text = f"Registered customers ({len(custs)}): {names_str}{more_suffix}."
+                else:
+                    response_text = "No customers registered in the database yet."
             else:
-                response_text = f"Customer '{cust_name}' was not found in records."
+                balance_info = CustomerService.get_customer_balance(db, cust_name, session.business_id)
+                business_data = balance_info
+                action_type = "business_query"
+                if balance_info.get("found"):
+                    response_text = f"{balance_info['name']}'s outstanding balance is ₹{balance_info['outstanding_balance']:.2f}."
+                else:
+                    response_text = f"Customer '{cust_name}' was not found in records."
 
         elif fn_name == "get_business_summary":
             summary = ReportService.get_business_summary(db, session.business_id)
