@@ -296,9 +296,18 @@ async def process_voice_interaction(
 
         elif fn_name == "create_bill":
             # Multi-turn bill staging: Verify items against DB, then ask for confirmation
-            items_req = args.get("items", [])
+            raw_items = args.get("items", [])
             cust_name = args.get("customer_name")
             pay_method = args.get("payment_method", "CASH")
+
+            # Filter items: skip stopwords or conversational filler names
+            HINDI_STOPWORDS = {"abhi", "so", "karo", "do", "ek", "item", "cheez", "bhi", "aur", "sample"}
+            items_req = []
+            for it in raw_items:
+                n = (it.get("name") or "").strip().lower()
+                if not n or n in HINDI_STOPWORDS:
+                    continue
+                items_req.append(it)
 
             # Check validity in database
             preview_items = []
@@ -343,6 +352,39 @@ async def process_voice_interaction(
                 )
                 action_type = "billing_action"
 
+        elif fn_name == "add_product":
+            p_name = str(args.get("name", "")).strip()
+            p_unit = str(args.get("unit", "pcs")).strip()
+            try:
+                p_price = Decimal(str(args.get("selling_price", 0)))
+            except Exception:
+                p_price = Decimal("0")
+            try:
+                p_stock = Decimal(str(args.get("stock", 10)))
+            except Exception:
+                p_stock = Decimal("10")
+
+            if p_name and p_price > Decimal("0"):
+                prod = InventoryService.add_or_update_product(
+                    db=db,
+                    name=p_name,
+                    selling_price=p_price,
+                    current_stock=p_stock,
+                    unit=p_unit,
+                    business_id=session.business_id,
+                )
+                business_data = {
+                    "product_id": prod["id"],
+                    "name": prod["name"],
+                    "selling_price": float(prod["selling_price"]),
+                    "current_stock": float(prod["current_stock"]),
+                    "unit": prod["unit"],
+                }
+                action_type = "inventory_action"
+                response_text = prod["message"]
+            else:
+                response_text = "Please specify a valid product name and price to add it to inventory."
+
         elif fn_name == "control_relay":
             relay_num = args.get("relay_number", 1)
             state = args.get("state", "off").lower()
@@ -359,7 +401,7 @@ async def process_voice_interaction(
                 params={"relay": relay_num, "state": state},
                 status="pending",
             )
-            response_text = f"Relay {relay_num} has been switched {state}."
+            response_text = f"Turning relay {relay_num} {state}."
             action_type = "hardware_action"
 
         elif fn_name == "blink_led":

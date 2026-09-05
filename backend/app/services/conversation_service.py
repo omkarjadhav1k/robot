@@ -19,16 +19,24 @@ logger = logging.getLogger(__name__)
 
 # Regular expressions for affirmative and negative intent in English and Hinglish/Hindi
 AFFIRMATION_PATTERNS = [
-    r"\b(haan|haa|ha|yes|yep|yeah|yup|sure|ok|okay|theek|thik|theek hai|thik hai|haan karo|ha karo|bilkul|kar do|kar dalo|sahi|sahi hai|proceed|confirm|done)\b",
-    r"^(karo|do it)$",
+    r"\b(haan|haa|ha|yes|yep|yeah|yup|sure|ok|okay|okey|theek|thik|theek hai|thik hai|theek h|thik h|haan karo|ha karo|bilkul|kar do|kar dalo|sahi|sahi hai|proceed|confirm|conform|its confirm|its conform|it's confirm|it's conform|done|pakka|ha pakka|haan confirm|ha confirm|conformation|confirmation)\b",
+    r"^(karo|do it|add kar do|add karo|banado|bana do)$",
+]
+
+# Phrases that express questions or complaints about past actions, which should NOT cancel a pending bill
+QUESTION_COMPLAINT_PATTERNS = [
+    r"\b(nahi kiya|hua nahi|nahi hua|kyu nahi|kyun nahi|nahi add|add nahi|bana nahi|nahi bana)\b",
 ]
 
 NEGATION_PATTERNS = [
-    r"\b(nahi|nahin|na|no|nope|cancel|mat|mat karo|cancel karo|cancel it|stop|rehne do|rahne do|dont|don't|not now)\b",
+    r"\b(cancel|mat karo|cancel karo|cancel it|stop|rehne do|rahne do|dont|don't|not now|chhod do|chod do|nhi chahiye|nahi chahiye)\b",
+    r"^(nahi|nahin|na|no|nope|n)$",
+    r"\b(nahi|nahin|no)\b(?!\s+(kiya|hua|bana|aaya|chal))",
 ]
 
 AFFIRMATION_REGEX = re.compile("|".join(AFFIRMATION_PATTERNS), re.IGNORECASE)
 NEGATION_REGEX = re.compile("|".join(NEGATION_PATTERNS), re.IGNORECASE)
+QUESTION_COMPLAINT_REGEX = re.compile("|".join(QUESTION_COMPLAINT_PATTERNS), re.IGNORECASE)
 
 
 
@@ -192,6 +200,8 @@ class ConversationService:
     def is_negation(text: str) -> bool:
         """Check if user text conveys cancellation or refusal."""
         cleaned = text.strip().lower()
+        if QUESTION_COMPLAINT_REGEX.search(cleaned):
+            return False
         return bool(NEGATION_REGEX.search(cleaned))
 
     @classmethod

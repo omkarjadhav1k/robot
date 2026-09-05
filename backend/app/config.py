@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Google Gemini AI
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-3.7-flash"
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"
 
     # Groq Whisper (Speech-to-Text)
     GROQ_API_KEY: str = ""

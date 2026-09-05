@@ -16,10 +16,11 @@ SYSTEM_INSTRUCTION = (
     "1. You NEVER guess, hallucinate, or invent inventory stock, product prices, customer balances, or bill totals.\n"
     "2. You MUST use the provided function tools to query the database whenever the user asks about stock, bills, sales, customers, or to create a bill.\n"
     "3. You MUST use hardware tools (control_relay, blink_led) when asked to switch or toggle appliances, lights, or relays.\n"
-    "4. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "4. When asked to add, register, or create a new product/sample product in the store/inventory, use the add_product tool.\n"
+    "5. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
 )
 
-FALLBACK_MODELS = ["gemini-3.7-flash", "gemini-3.1-flash-lite"]
+FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
 
 # Tool Declarations for Gemini Function Calling
 BUSINESS_TOOLS = [
@@ -138,6 +139,32 @@ BUSINESS_TOOLS = [
                     "properties": {},
                 },
             },
+            {
+                "name": "add_product",
+                "description": "Add a new product to inventory or update its stock and price.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "name": {
+                            "type": "STRING",
+                            "description": "Name of the product (e.g. 'Eggs', 'Brown Bread', 'Soap', 'Sample Product').",
+                        },
+                        "unit": {
+                            "type": "STRING",
+                            "description": "Unit of measurement, e.g. 'kg', 'pcs', 'ltr', 'packet'. Defaults to 'pcs'.",
+                        },
+                        "selling_price": {
+                            "type": "NUMBER",
+                            "description": "Authoritative selling price per unit in rupees.",
+                        },
+                        "stock": {
+                            "type": "NUMBER",
+                            "description": "Initial stock quantity. Defaults to 10 if not specified.",
+                        },
+                    },
+                    "required": ["name", "selling_price"],
+                },
+            },
         ]
     }
 ]
@@ -213,7 +240,7 @@ async def reason_with_gemini(
     }
 
     last_err = "No response"
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=25.0) as client:
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
             try:
