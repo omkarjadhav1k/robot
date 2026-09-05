@@ -1,4 +1,4 @@
-﻿"""Official Meta WhatsApp Business Cloud API integration service."""
+"""Official Meta WhatsApp Business Cloud API integration service."""
 
 import logging
 import os
@@ -79,8 +79,8 @@ class WhatsAppService:
         for item in bill.items:
             name = item.product.name if item.product else "Item"
             qty = f"{float(item.quantity):.0f}" if float(item.quantity).is_integer() else f"{float(item.quantity):.1f}"
-            lines.append(f"{qty} × {name} — ₹{float(item.total_price):.2f}")
-        return "\n".join(lines) if lines else "Products purchased"
+            lines.append(f"{qty} × {name} (₹{float(item.total_price):.2f})")
+        return ", ".join(lines) if lines else "Products purchased"
 
     @classmethod
     async def upload_pdf_media(
@@ -208,6 +208,10 @@ class WhatsAppService:
         formatted_items = cls.format_item_list_for_template(bill)
         final_total = f"{float(bill.total_amount):.2f}"
 
+        def _clean_param(val: Any) -> str:
+            cleaned = re.sub(r"[\r\n\t]+", " ", str(val or "")).strip()
+            return re.sub(r" {2,}", " ", cleaned)
+
         components = [
             {
                 "type": "header",
@@ -224,11 +228,11 @@ class WhatsAppService:
             {
                 "type": "body",
                 "parameters": [
-                    {"type": "text", "text": customer_name},
-                    {"type": "text", "text": biz_name},
-                    {"type": "text", "text": bill.bill_number},
-                    {"type": "text", "text": formatted_items},
-                    {"type": "text", "text": final_total},
+                    {"type": "text", "text": _clean_param(customer_name)},
+                    {"type": "text", "text": _clean_param(biz_name)},
+                    {"type": "text", "text": _clean_param(bill.bill_number)},
+                    {"type": "text", "text": _clean_param(formatted_items)},
+                    {"type": "text", "text": _clean_param(final_total)},
                 ],
             },
         ]
@@ -256,6 +260,39 @@ class WhatsAppService:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 resp_json = resp.json() if resp.content else {}
+
+                # Fallback: if template in Meta does not have a header, retry with body only
+                if resp.status_code != 200:
+                    err_info = resp_json.get("error", {})
+                    err_details = str(err_info.get("error_data", {}).get("details", ""))
+                    if "header:" in err_details or "does not contain title component" in err_details:
+                        logger.info("Template has no header component in Meta; retrying with body only...")
+                        body_only_payload = dict(payload)
+                        body_only_payload["template"] = dict(payload["template"])
+                        body_only_payload["template"]["components"] = [
+                            c for c in components if c.get("type") != "header"
+                        ]
+                        resp = await client.post(url, headers=headers, json=body_only_payload)
+                        resp_json = resp.json() if resp.content else {}
+
+                        # If template succeeded and we have a generated PDF media_id, dispatch document
+                        if resp.status_code in (200, 201) and media_id:
+                            try:
+                                doc_payload = {
+                                    "messaging_product": "whatsapp",
+                                    "recipient_type": "individual",
+                                    "to": recipient,
+                                    "type": "document",
+                                    "document": {
+                                        "id": media_id,
+                                        "filename": f"Invoice_{bill.bill_number}.pdf",
+                                        "caption": f"Invoice #{bill.bill_number}",
+                                    },
+                                }
+                                await client.post(url, headers=headers, json=doc_payload)
+                                logger.info("Successfully dispatched follow-up PDF document to %s", recipient)
+                            except Exception as de:
+                                logger.warning("Follow-up PDF document send warning: %s", de)
 
                 if resp.status_code in (200, 201):
                     messages = resp_json.get("messages", [])

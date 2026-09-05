@@ -66,8 +66,8 @@ def test_format_item_list_for_template(db_session):
     db_session.refresh(bill)
 
     formatted = WhatsAppService.format_item_list_for_template(bill)
-    assert "2 × Chai — ₹40.00" in formatted
-    assert "1 × Sandwich — ₹80.00" in formatted
+    assert "2 × Chai (₹40.00)" in formatted
+    assert "1 × Sandwich (₹80.00)" in formatted
 
 
 @pytest.mark.asyncio

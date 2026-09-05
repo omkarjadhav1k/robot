@@ -1,6 +1,6 @@
-﻿"""Invoice PDF generation service using ReportLab."""
+"""Invoice PDF generation service using ReportLab."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import os
 from typing import Any, Dict, List, Optional
@@ -98,13 +98,14 @@ class InvoicePDFService:
         biz_name = business.name if business else "Business AI Robot Store"
         biz_type = business.business_type if business else "Retail Store"
 
+        created_date = (bill.created_at or datetime.now(timezone.utc)).strftime('%d %b %Y, %I:%M %p')
         header_data = [
             [
                 Paragraph(f"<b>{biz_name}</b><br/>{biz_type}", title_style),
                 Paragraph(
                     f"<b>INVOICE</b><br/>"
                     f"<font color='#64748b'>#{bill.bill_number}</font><br/>"
-                    f"<font color='#64748b'>{bill.created_at.strftime('%d %b %Y, %I:%M %p')}</font>",
+                    f"<font color='#64748b'>{created_date}</font>",
                     right_bold,
                 ),
             ]
@@ -125,15 +126,16 @@ class InvoicePDFService:
         # 2. Customer & Bill Info Section
         customer_name = bill.customer.name if bill.customer else "Walk-in Customer"
         customer_phone = bill.customer.phone if (bill.customer and bill.customer.phone) else "N/A"
-        payment_status_text = bill.payment_status.value
-        status_color = "#16a34a" if bill.payment_status == PaymentStatus.PAID else "#d97706"
+        payment_status_text = bill.payment_status.value if hasattr(bill.payment_status, "value") else str(bill.payment_status or "PAID")
+        source_text = bill.source.value if hasattr(getattr(bill, "source", None), "value") else str(bill.source or "ROBOT_VOICE")
+        status_color = "#16a34a" if (bill.payment_status == PaymentStatus.PAID or payment_status_text == "PAID") else "#d97706"
 
         info_data = [
             [
                 Paragraph(f"<b>Billed To:</b><br/>{customer_name}<br/>Phone: {customer_phone}", subtitle_style),
                 Paragraph(
                     f"<b>Payment Status:</b> <font color='{status_color}'><b>{payment_status_text}</b></font><br/>"
-                    f"<b>Source:</b> {bill.source.value}",
+                    f"<b>Source:</b> {source_text}",
                     subtitle_style,
                 ),
             ]
