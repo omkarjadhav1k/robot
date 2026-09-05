@@ -20,7 +20,7 @@
 #define BACKEND_BASE_URL    "https://business-ai-robot-backend.onrender.com"
 
 // --- Timing & Intervals ---
-#define HEARTBEAT_INTERVAL_MS   3000   // Send heartbeat & poll commands every 3s
+#define HEARTBEAT_INTERVAL_MS   6000   // Send heartbeat & poll commands every 6s (cloud stability)
 #define WIFI_RETRY_INTERVAL_MS  5000   // Check Wi-Fi every 5s if disconnected
 #define SERIAL_BAUD_RATE        115200
 

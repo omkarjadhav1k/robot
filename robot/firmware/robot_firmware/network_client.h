@@ -18,16 +18,22 @@ private:
     unsigned long _lastHeartbeatTime;
     unsigned long _lastWifiCheckTime;
     bool _isConnected;
-    WiFiClientSecure _secureClient;
-    WiFiClient _plainClient;
 
-    bool _beginHttp(HTTPClient& http, const String& url) {
+    bool _beginHttp(HTTPClient& http, WiFiClientSecure& sec, WiFiClient& plain, const String& url) {
         if (url.startsWith("https://")) {
-            _secureClient.setInsecure(); // Connect via HTTPS without hardcoded Root CA certificate
-            return http.begin(_secureClient, url);
+            sec.setInsecure();
+            sec.setTimeout(15);
+            return http.begin(sec, url);
         } else {
-            return http.begin(_plainClient, url);
+            plain.setTimeout(10);
+            return http.begin(plain, url);
         }
+    }
+
+    void _endHttp(HTTPClient& http, WiFiClientSecure& sec, WiFiClient& plain) {
+        http.end();
+        sec.stop();
+        plain.stop();
     }
 
     // Helper: Extract JSON string value by key
@@ -124,11 +130,13 @@ public:
         if (WiFi.status() != WL_CONNECTED) return;
 
         HTTPClient http;
+        WiFiClientSecure sec;
+        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/heartbeat";
 
-        _beginHttp(http, url);
+        _beginHttp(http, sec, plain, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(5000);
+        http.setTimeout(12000);
 
         String micStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
         String spkStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
@@ -159,17 +167,19 @@ public:
         } else {
             Serial.printf("[HEARTBEAT] POST failed with HTTP code: %d\n", httpCode);
         }
-        http.end();
+        _endHttp(http, sec, plain);
     }
 
     void fetchAndExecuteCommands() {
         if (WiFi.status() != WL_CONNECTED) return;
 
         HTTPClient http;
+        WiFiClientSecure sec;
+        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/pending";
 
-        _beginHttp(http, url);
-        http.setTimeout(5000);
+        _beginHttp(http, sec, plain, url);
+        http.setTimeout(12000);
 
         int httpCode = http.GET();
         if (httpCode == 200) {
@@ -178,7 +188,7 @@ public:
         } else {
             Serial.printf("[COMMAND] GET pending failed, code: %d\n", httpCode);
         }
-        http.end();
+        _endHttp(http, sec, plain);
     }
 
     void parseAndExecuteCommands(const String& jsonArray) {
@@ -248,11 +258,13 @@ public:
         if (WiFi.status() != WL_CONNECTED) return;
 
         HTTPClient http;
+        WiFiClientSecure sec;
+        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/" + cmdId + "/ack";
 
-        _beginHttp(http, url);
+        _beginHttp(http, sec, plain, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(5000);
+        http.setTimeout(12000);
 
         String payload = "{";
         payload += "\"status\":\"" + status + "\",";
@@ -262,7 +274,7 @@ public:
 
         int httpCode = http.POST(payload);
         Serial.printf("[ACK] Sent for %s -> HTTP code %d\n", cmdId.c_str(), httpCode);
-        http.end();
+        _endHttp(http, sec, plain);
     }
 
     void sendChatToBrain(const String& prompt) {
@@ -279,11 +291,13 @@ public:
         _led->setPattern(PATTERN_COMMAND_EXEC);
 
         HTTPClient http;
+        WiFiClientSecure sec;
+        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/voice/interact";
 
-        _beginHttp(http, url);
+        _beginHttp(http, sec, plain, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(25000); // 25s timeout for cloud LLM reasoning
+        http.setTimeout(30000); // 30s timeout for cloud LLM reasoning
 
         // Escape JSON quotes
         String cleanPrompt = prompt;
@@ -317,7 +331,7 @@ public:
         } else {
             Serial.printf("❌ Backend chat error (HTTP %d)\n", httpCode);
         }
-        http.end();
+        _endHttp(http, sec, plain);
         _led->setPattern(PATTERN_ONLINE);
         Serial.println(F("\n💬 Type next question or command:"));
     }
