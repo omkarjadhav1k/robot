@@ -5,7 +5,7 @@ from decimal import Decimal
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.billing import Bill, Customer, PaymentStatus
@@ -35,7 +35,7 @@ class ReportService:
         # 2. Total active products & low stock items count
         q_stock = db.query(
             func.count(Product.id).label("total_products"),
-            func.sum(func.case((Product.current_stock <= Product.minimum_stock, 1), else_=0)).label("low_stock_count"),
+            func.sum(case((Product.current_stock <= Product.minimum_stock, 1), else_=0)).label("low_stock_count"),
         ).filter(Product.is_active == True)
         if business_id:
             q_stock = q_stock.filter(Product.business_id == business_id)
