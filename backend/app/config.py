@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     HINDI_TTS_VOICE: str = "hi-IN-SwaraNeural"
     MARATHI_TTS_VOICE: str = "mr-IN-AarohiNeural"
 
+    # Meta WhatsApp Business Cloud API
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+    WHATSAPP_TEMPLATE_NAME: str = "invoice_bill"
+    WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
+    WHATSAPP_API_VERSION: str = "v21.0"
+    WHATSAPP_DEFAULT_COUNTRY_CODE: str = "91"
+
     # Robot defaults & security
     DEFAULT_ROBOT_ID: str = "ROBOT-001"
     ROBOT_SHARED_SECRET: str = "insecure-dev-robot-secret"

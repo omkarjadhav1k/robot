@@ -77,3 +77,7 @@ coverage.xml
 ios/Flutter/Generated.xcconfig
 android/local.properties
 *.apk
+
+# Storage & generated PDFs
+storage/
+*.pdf

@@ -60,6 +60,8 @@ async def lifespan(app: FastAPI):
                     ("Wheat Flour 5kg", "bag", Decimal("210.00"), Decimal("18.00"), Decimal("3.00")),
                     ("Milk 1L", "packet", Decimal("60.00"), Decimal("30.00"), Decimal("5.00")),
                     ("Tea Powder 250g", "box", Decimal("120.00"), Decimal("15.00"), Decimal("4.00")),
+                    ("Tea", "cup", Decimal("20.00"), Decimal("100.00"), Decimal("10.00")),
+                    ("Veg Sandwich", "pcs", Decimal("80.00"), Decimal("50.00"), Decimal("5.00")),
                 ]
                 for name, unit, price, stock, min_stock in seed_items:
                     p = Product(
@@ -75,6 +77,38 @@ async def lifespan(app: FastAPI):
                     db.add(p)
                 db.commit()
                 logger.info("Seeded %d store products into database.", len(seed_items))
+
+            # Ensure Tea & Sandwich exist even if database was previously seeded
+            for p_name, p_unit, p_price, p_stock in [
+                ("Tea", "cup", Decimal("20.00"), Decimal("100.00")),
+                ("Veg Sandwich", "pcs", Decimal("80.00"), Decimal("50.00")),
+            ]:
+                existing_p = db.query(Product).filter(Product.business_id == biz.id, Product.name.ilike(p_name)).first()
+                if not existing_p:
+                    db.add(Product(
+                        business_id=biz.id,
+                        name=p_name,
+                        unit=p_unit,
+                        selling_price=p_price,
+                        purchase_price=p_price * Decimal("0.8"),
+                        current_stock=p_stock,
+                        minimum_stock=Decimal("5.00"),
+                        is_active=True,
+                    ))
+                    db.commit()
+
+            # Ensure sample customer Rahul exists with WhatsApp number
+            from app.models.billing import Customer
+            rahul = db.query(Customer).filter(Customer.business_id == biz.id, Customer.name.ilike("Rahul")).first()
+            if not rahul:
+                db.add(Customer(
+                    business_id=biz.id,
+                    name="Rahul",
+                    phone="9876543210",
+                    outstanding_balance=Decimal("0.00"),
+                ))
+                db.commit()
+                logger.info("Seeded sample customer Rahul (9876543210)")
     except Exception as e:
         logger.error(f"Failed to synchronize database tables on startup: {e}", exc_info=True)
 

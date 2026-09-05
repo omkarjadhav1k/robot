@@ -8,12 +8,14 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+import uuid
 from app.ai.gemini_service import reason_with_gemini
 from app.config import get_settings
 from app.database.session import get_db
-from app.models.billing import BillSource
+from app.models.billing import Bill, BillSource
+from app.models.business import Business
 from app.models.conversation import ConversationState
 from app.models.robot_command import AIActivity, CommandStatus
 from app.schemas.robot import (
@@ -28,6 +30,7 @@ from app.services.customer_service import CustomerService
 from app.services.inventory_service import InventoryService
 from app.services.report_service import ReportService
 from app.services.robot_service import RobotService
+from app.services.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger("business_ai_robot.voice")
 router = APIRouter()
@@ -37,6 +40,8 @@ settings = get_settings()
 def _get_immediate_ack(prompt: str) -> str:
     """Generate sub-200ms acoustic/text acknowledgment based on user utterance keywords."""
     p = prompt.lower()
+    if "whatsapp" in p:
+        return "Preparing invoice for WhatsApp..."
     if any(w in p for w in ["stock", "maal", "samaan", "available", "kitna hai"]):
         return "Checking inventory stock..."
     if any(w in p for w in ["bill", "hisaab", "sales", "revenue", "aaj ka"]):
@@ -145,10 +150,39 @@ async def process_voice_interaction(
                     source=BillSource.ROBOT_VOICE,
                     business_id=session.business_id,
                 )
-                response_text = (
-                    f"Bill {bill_res['bill_number']} has been created successfully for "
-                    f"{bill_res['customer_name']}. Total amount is ₹{bill_res['total_amount']:.2f}."
-                )
+
+                send_whatsapp = bool(context_data.get("send_whatsapp", False))
+                if send_whatsapp:
+                    bill_obj = (
+                        db.query(Bill)
+                        .options(joinedload(Bill.customer), joinedload(Bill.items))
+                        .filter(Bill.id == uuid.UUID(bill_res["bill_id"]))
+                        .first()
+                    )
+                    business_obj = (
+                        db.query(Business).filter(Business.id == session.business_id).first()
+                        if session.business_id
+                        else db.query(Business).first()
+                    )
+                    res = await WhatsAppService.send_invoice_via_whatsapp(
+                        bill=bill_obj,
+                        business=business_obj,
+                    )
+                    if res.success:
+                        response_text = (
+                            f"Bill {bill_res['bill_number']} of ₹{bill_res['total_amount']:.2f} has been generated "
+                            f"and sent to {bill_res['customer_name']} on WhatsApp."
+                        )
+                    else:
+                        response_text = (
+                            "I generated the bill, but I couldn't send it on WhatsApp. "
+                            "Please check the customer's WhatsApp number."
+                        )
+                else:
+                    response_text = (
+                        f"Bill {bill_res['bill_number']} has been created successfully for "
+                        f"{bill_res['customer_name']}. Total amount is ₹{bill_res['total_amount']:.2f}."
+                    )
                 ConversationService.reset_state(db, session)
                 ConversationService.append_message(db, session, role="user", content=prompt)
                 ConversationService.append_message(db, session, role="assistant", content=response_text)
@@ -377,10 +411,53 @@ async def process_voice_interaction(
                 else:
                     missing_items.append(name)
 
+            send_whatsapp = bool(args.get("send_whatsapp", False)) or ("whatsapp" in prompt.lower())
+
             if missing_items:
                 response_text = f"Cannot create bill. Products not found in stock: {', '.join(missing_items)}."
             elif not preview_items:
                 response_text = "Please specify products and quantities to create a bill."
+            elif send_whatsapp:
+                # Direct immediate execution if WhatsApp dispatch requested
+                try:
+                    bill_res = BillingService.create_bill(
+                        db=db,
+                        items_requested=items_req,
+                        customer_name=cust_name,
+                        payment_method=pay_method,
+                        source=BillSource.ROBOT_VOICE,
+                        business_id=session.business_id,
+                    )
+                    business_data = bill_res
+                    bill_obj = (
+                        db.query(Bill)
+                        .options(joinedload(Bill.customer), joinedload(Bill.items))
+                        .filter(Bill.id == uuid.UUID(bill_res["bill_id"]))
+                        .first()
+                    )
+                    business_obj = (
+                        db.query(Business).filter(Business.id == session.business_id).first()
+                        if session.business_id
+                        else db.query(Business).first()
+                    )
+                    res = await WhatsAppService.send_invoice_via_whatsapp(
+                        bill=bill_obj,
+                        business=business_obj,
+                    )
+                    if res.success:
+                        response_text = (
+                            f"Bill {bill_res['bill_number']} of ₹{bill_res['total_amount']:.2f} has been generated "
+                            f"and sent to {bill_res['customer_name']} on WhatsApp."
+                        )
+                    else:
+                        response_text = (
+                            "I generated the bill, but I couldn't send it on WhatsApp. "
+                            "Please check the customer's WhatsApp number."
+                        )
+                    action_type = "billing_action"
+                except Exception as e:
+                    logger.error("Error creating and sending WhatsApp bill: %s", e, exc_info=True)
+                    response_text = f"Failed to create bill: {str(e)}"
             else:
                 # Set multi-turn state: AWAITING_CONFIRMATION
                 items_summary = ", ".join(preview_items)
@@ -400,9 +477,79 @@ async def process_voice_interaction(
                         "customer_name": cust_name,
                         "payment_method": pay_method,
                         "estimated_total": float(preview_total),
+                        "send_whatsapp": False,
                     },
                 )
                 action_type = "billing_action"
+
+        elif fn_name == "send_whatsapp_bill":
+            inv_id = args.get("invoice_id")
+            cust_name = args.get("customer_name")
+            phone_num = args.get("phone_number")
+
+            bill_obj = None
+            if inv_id:
+                try:
+                    bill_obj = (
+                        db.query(Bill)
+                        .options(joinedload(Bill.customer), joinedload(Bill.items))
+                        .filter(Bill.id == uuid.UUID(inv_id.strip()))
+                        .first()
+                    )
+                except Exception:
+                    pass
+                if not bill_obj:
+                    bill_obj = (
+                        db.query(Bill)
+                        .options(joinedload(Bill.customer), joinedload(Bill.items))
+                        .filter(Bill.bill_number.ilike(inv_id.strip()))
+                        .first()
+                    )
+
+            if not bill_obj and cust_name:
+                customer = CustomerService.search_customer(db, cust_name, session.business_id)
+                if customer:
+                    bill_obj = (
+                        db.query(Bill)
+                        .options(joinedload(Bill.customer), joinedload(Bill.items))
+                        .filter(Bill.customer_id == customer.id)
+                        .order_by(Bill.created_at.desc())
+                        .first()
+                    )
+
+            if not bill_obj:
+                bill_obj = (
+                    db.query(Bill)
+                    .options(joinedload(Bill.customer), joinedload(Bill.items))
+                    .order_by(Bill.created_at.desc())
+                    .first()
+                )
+
+            if not bill_obj:
+                response_text = "No invoice found to send via WhatsApp."
+            else:
+                business_obj = (
+                    db.query(Business).filter(Business.id == bill_obj.business_id).first()
+                    if bill_obj.business_id
+                    else db.query(Business).first()
+                )
+                res = await WhatsAppService.send_invoice_via_whatsapp(
+                    bill=bill_obj,
+                    business=business_obj,
+                    recipient_phone=phone_num,
+                )
+                if res.success:
+                    c_name = bill_obj.customer.name if bill_obj.customer else "the customer"
+                    response_text = (
+                        f"Bill {bill_obj.bill_number} of ₹{float(bill_obj.total_amount):.2f} has been generated "
+                        f"and sent to {c_name} on WhatsApp."
+                    )
+                else:
+                    response_text = (
+                        "I generated the bill, but I couldn't send it on WhatsApp. "
+                        "Please check the customer's WhatsApp number."
+                    )
+            action_type = "whatsapp_action"
 
         elif fn_name == "add_product":
             p_name = str(args.get("name", "")).strip()

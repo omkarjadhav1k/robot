@@ -20,7 +20,8 @@ SYSTEM_INSTRUCTION = (
     "5. When asked for all products, inventory list, stock count, or overview (e.g., 'check stock', 'check all products', 'build a list', 'how many items in stock', 'sagle kiti product aahe' in Marathi/Hindi/English), use the list_all_products tool.\n"
     "6. You understand English, Hindi, and Marathi. When user speaks in Marathi or Hindi, understand and respond appropriately.\n"
     "7. When asked who was billed today, which customers got bills, or customer names for bills (e.g. 'kona konala bill dile', 'who received bills', 'customer name', 'show bills list'), use the get_todays_bills tool.\n"
-    "8. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "8. When asked to bill and WhatsApp (e.g. 'Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do', 'bill bana ke WhatsApp bhej do', 'WhatsApp kar do'), use create_bill with send_whatsapp=true. When asked to send an existing invoice on WhatsApp, use send_whatsapp_bill.\n"
+    "9. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
 )
 
 FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
@@ -83,7 +84,7 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "create_bill",
-                "description": "Initiate creation of a sales bill with line items and customer information.",
+                "description": "Initiate creation of a sales bill with line items and customer information, optionally sending it on WhatsApp.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -97,7 +98,7 @@ BUSINESS_TOOLS = [
                             "items": {
                                 "type": "OBJECT",
                                 "properties": {
-                                    "name": {"type": "STRING", "description": "Product name (e.g. 'rice')"},
+                                    "name": {"type": "STRING", "description": "Product name (e.g. 'tea', 'sandwich')"},
                                     "quantity": {"type": "NUMBER", "description": "Quantity purchased (e.g. 2)"},
                                 },
                                 "required": ["name", "quantity"],
@@ -106,6 +107,10 @@ BUSINESS_TOOLS = [
                         "payment_method": {
                             "type": "STRING",
                             "description": "Payment method: CASH, UPI, CREDIT, or CARD. Defaults to CASH.",
+                        },
+                        "send_whatsapp": {
+                            "type": "BOOLEAN",
+                            "description": "Set to true if user requested to WhatsApp or send the bill to the customer (e.g. 'WhatsApp kar do', 'WhatsApp pe bhej do').",
                         },
                     },
                     "required": ["items"],
@@ -174,6 +179,27 @@ BUSINESS_TOOLS = [
                         },
                     },
                     "required": ["name", "selling_price"],
+                },
+            },
+            {
+                "name": "send_whatsapp_bill",
+                "description": "Send an existing bill or invoice to a customer on WhatsApp.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "invoice_id": {
+                            "type": "STRING",
+                            "description": "Invoice number (e.g. 'INV-1025') or 'latest' for the last bill generated.",
+                        },
+                        "customer_name": {
+                            "type": "STRING",
+                            "description": "Customer name (e.g. 'Rahul', 'Omkar') if known.",
+                        },
+                        "phone_number": {
+                            "type": "STRING",
+                            "description": "WhatsApp phone number if explicitly provided by user.",
+                        },
+                    },
                 },
             },
         ]

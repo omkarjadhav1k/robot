@@ -36,6 +36,10 @@ GROCERY_ALIASES = {
     "chai": "tea",
     "chay": "tea",
     "tea": "tea",
+    "sandwich": "sandwich",
+    "coffee": "coffee",
+    "biscuit": "biscuit",
+    "biscuits": "biscuit",
 }
 
 STOPWORDS = {
