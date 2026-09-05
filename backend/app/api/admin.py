@@ -1,0 +1,312 @@
+"""Admin Web Dashboard & Brain Training API router.
+
+Serves the interactive Admin Panel at /admin and provides REST APIs for:
+- Live interactive chat with the Robot Brain
+- Brain Knowledge / Instruction management (CRUD, active toggle, category tagging)
+- Store inventory, sales metrics, and WhatsApp operations
+"""
+
+from decimal import Decimal
+import logging
+from pathlib import Path
+import time
+from typing import Any, Dict, List, Optional
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.ai.gemini_service import reason_with_gemini
+from app.database.session import get_db
+from app.models.billing import Bill, Customer
+from app.models.business import Business
+from app.models.product import Product
+from app.services.billing_service import BillingService
+from app.services.brain_service import BrainService
+from app.services.inventory_service import InventoryService
+from app.services.report_service import ReportService
+from app.services.whatsapp_service import WhatsAppService
+
+logger = logging.getLogger("business_ai_robot.admin")
+router = APIRouter()
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+ADMIN_HTML_PATH = TEMPLATES_DIR / "admin.html"
+
+
+# --- Request / Response Schemas ---
+
+class CreateInstructionRequest(BaseModel):
+    instruction: str
+    category: Optional[str] = "RULE"
+    source: Optional[str] = "WEB_PANEL"
+
+
+class ToggleInstructionRequest(BaseModel):
+    is_active: Optional[bool] = None
+
+
+class AdminChatRequest(BaseModel):
+    message: str
+    teach_mode: bool = False
+
+
+# --- UI Endpoints ---
+
+@router.get("/admin", response_class=HTMLResponse, tags=["admin"])
+@router.get("/dashboard", response_class=HTMLResponse, tags=["admin"])
+async def get_admin_dashboard():
+    """Serve the modern dark-themed interactive Robot Brain Training & Ops Dashboard."""
+    if not ADMIN_HTML_PATH.exists():
+        raise HTTPException(status_code=404, detail="Admin dashboard template not found.")
+    content = ADMIN_HTML_PATH.read_text(encoding="utf-8")
+    return HTMLResponse(content=content)
+
+
+# --- REST API Endpoints ---
+
+@router.get("/api/v1/admin/stats", tags=["admin"])
+async def get_admin_stats(db: Session = Depends(get_db)):
+    """Fetch aggregated store metrics, products, and today's bills for the dashboard."""
+    biz = db.query(Business).first()
+    biz_id = biz.id if biz else None
+
+    # Summary
+    summary = ReportService.get_business_summary(db, biz_id)
+
+    # Products
+    prods = InventoryService.list_all_products(db, biz_id, limit=50)
+
+    # Today's Bills
+    bills_data = BillingService.get_todays_bills(db, biz_id)
+
+    # Customer count
+    cust_q = db.query(Customer)
+    if biz_id:
+        cust_q = cust_q.filter(Customer.business_id == biz_id)
+    cust_count = cust_q.count()
+
+    # Active rules count
+    active_rules_count = len(BrainService.get_active_instructions(db, biz_id))
+
+    return {
+        "today_revenue": summary.get("today_revenue", 0.0),
+        "today_bills_count": summary.get("today_sales_count", 0),
+        "total_credit_due": summary.get("total_credit_due", 0.0),
+        "total_products": len(prods),
+        "low_stock_count": summary.get("low_stock_count", 0),
+        "total_customers": cust_count,
+        "active_rules_count": active_rules_count,
+        "products": prods,
+        "recent_bills": bills_data.get("recent_bills", []),
+    }
+
+
+@router.get("/api/v1/admin/instructions", tags=["admin"])
+async def list_instructions(db: Session = Depends(get_db)):
+    """List all brain instructions and custom rules in the database."""
+    biz = db.query(Business).first()
+    return BrainService.list_all_instructions(db, biz.id if biz else None)
+
+
+@router.post("/api/v1/admin/instructions", tags=["admin"])
+async def add_instruction(req: CreateInstructionRequest, db: Session = Depends(get_db)):
+    """Add and persist a new custom brain instruction."""
+    try:
+        biz = db.query(Business).first()
+        item = BrainService.add_instruction(
+            db=db,
+            instruction=req.instruction,
+            category=req.category or "RULE",
+            source=req.source or "WEB_PANEL",
+            business_id=biz.id if biz else None,
+        )
+        return {
+            "success": True,
+            "id": str(item.id),
+            "instruction": item.instruction,
+            "category": item.category,
+            "is_active": item.is_active,
+        }
+    except Exception as e:
+        logger.error("Failed to add instruction: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/api/v1/admin/instructions/{instruction_id}/toggle", tags=["admin"])
+async def toggle_instruction(
+    instruction_id: uuid.UUID,
+    req: ToggleInstructionRequest,
+    db: Session = Depends(get_db),
+):
+    """Toggle a brain instruction active or disabled."""
+    item = BrainService.toggle_instruction(
+        db=db,
+        instruction_id=instruction_id,
+        is_active=req.is_active,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    return {"success": True, "id": str(item.id), "is_active": item.is_active}
+
+
+@router.delete("/api/v1/admin/instructions/{instruction_id}", tags=["admin"])
+async def delete_instruction(instruction_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Permanently remove a brain instruction from the database."""
+    success = BrainService.delete_instruction(db=db, instruction_id=instruction_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    return {"success": True, "id": str(instruction_id)}
+
+
+@router.post("/api/v1/admin/chat", tags=["admin"])
+async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
+    """
+    Live conversational playground endpoint for training or operating the robot brain.
+    - If teach_mode is ON or message has a teaching pattern, permanently saves rule to PostgreSQL.
+    - Otherwise reasons with Gemini with dynamic custom instructions and executes store tools.
+    """
+    t_start = time.perf_counter()
+    msg = req.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    biz = db.query(Business).first()
+    biz_id = biz.id if biz else None
+
+    # Case 1: Explicit Teach Mode enabled
+    if req.teach_mode:
+        item = BrainService.add_instruction(
+            db=db,
+            instruction=msg,
+            source="TEACH_MODE_CHAT",
+            business_id=biz_id,
+        )
+        duration = round((time.perf_counter() - t_start) * 1000, 2)
+        return {
+            "response_text": f"✅ Memorized to Brain Database: '{item.instruction}' (Category: {item.category})",
+            "rule_saved": True,
+            "rule_category": item.category,
+            "tool_invoked": None,
+            "action_type": "brain_learning",
+            "latencies": {"total_ms": duration},
+        }
+
+    # Case 2: Natural Language Teaching detection (e.g. "Remember that...", "Rule:...")
+    learned = BrainService.detect_and_learn_rule(db, msg, source="CHAT_TEACH", business_id=biz_id)
+    if learned:
+        duration = round((time.perf_counter() - t_start) * 1000, 2)
+        return {
+            "response_text": f"I have memorized this {learned.category.lower()} rule: '{learned.instruction}'. It will now be actively enforced across all robot interactions.",
+            "rule_saved": True,
+            "rule_category": learned.category,
+            "tool_invoked": None,
+            "action_type": "brain_learning",
+            "latencies": {"total_ms": duration},
+        }
+
+    # Case 3: Live Query with Tool Calling & Dynamic Active Rules Injected
+    custom_rules = BrainService.get_instruction_strings(db, biz_id)
+    gemini_res = await reason_with_gemini(
+        user_text=msg,
+        custom_instructions=custom_rules,
+    )
+
+    response_text = ""
+    tool_name = None
+    action_type = "conversation"
+    business_data = None
+
+    if gemini_res.function_call:
+        tool_name = gemini_res.function_call.get("name")
+        args = gemini_res.function_call.get("args", {})
+        logger.info("Admin Chat Gemini tool invocation: %s (%s)", tool_name, args)
+
+        if tool_name == "get_stock":
+            p_name = args.get("product_name", "")
+            stock_info = InventoryService.get_product_stock(db, p_name, biz_id)
+            if stock_info.get("found"):
+                response_text = f"{stock_info['name']} has {stock_info['current_stock']:.1f} {stock_info['unit']} in stock at ₹{stock_info['selling_price']:.2f}."
+            else:
+                response_text = f"Product '{p_name}' not found in inventory."
+            action_type = "business_query"
+
+        elif tool_name == "list_all_products":
+            prods = InventoryService.list_all_products(db, biz_id, limit=20)
+            summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in prods[:5]])
+            response_text = f"Inventory has {len(prods)} products: {summary}."
+            action_type = "business_query"
+
+        elif tool_name == "get_todays_bills":
+            cust_filter = args.get("customer_name")
+            bills_info = BillingService.get_todays_bills(db, biz_id, customer_name=cust_filter)
+            total_b = bills_info.get("total_bills", 0)
+            total_rev = bills_info.get("total_revenue", 0.0)
+            recent_b = bills_info.get("recent_bills", [])
+            if total_b == 0:
+                response_text = f"No bills found{' for ' + cust_filter if cust_filter else ''} today."
+            else:
+                b_list = [f"{b['bill_number']} (₹{b['total_amount']:.2f})" for b in recent_b[:5]]
+                response_text = f"Found {total_b} bill{'s' if total_b > 1 else ''} totaling ₹{total_rev:.2f}: {', '.join(b_list)}."
+            action_type = "business_query"
+
+        elif tool_name == "create_bill":
+            raw_items = args.get("items", [])
+            cust_name = args.get("customer_name")
+            pay_method = args.get("payment_method", "CASH")
+            try:
+                bill_res = BillingService.create_bill(
+                    db=db,
+                    items_requested=raw_items,
+                    customer_name=cust_name,
+                    payment_method=pay_method,
+                    business_id=biz_id,
+                )
+                response_text = f"Bill {bill_res['bill_number']} created for {bill_res['customer_name']}. Total: ₹{bill_res['total_amount']:.2f}."
+                if args.get("send_whatsapp"):
+                    bill_obj = db.query(Bill).filter(Bill.id == uuid.UUID(bill_res["bill_id"])).first()
+                    wa_res = await WhatsAppService.send_invoice_via_whatsapp(bill=bill_obj, business=biz)
+                    if wa_res.success:
+                        response_text += " Sent to customer on WhatsApp!"
+                    else:
+                        response_text += f" WhatsApp error: {wa_res.error_message or 'Check phone number'}"
+            except Exception as e:
+                response_text = f"Failed to create bill: {str(e)}"
+            action_type = "billing_action"
+
+        elif tool_name == "send_whatsapp_bill":
+            inv_id = args.get("invoice_id")
+            phone_num = args.get("phone_number")
+            bill_obj = db.query(Bill).order_by(Bill.created_at.desc()).first()
+            if bill_obj:
+                wa_res = await WhatsAppService.send_invoice_via_whatsapp(
+                    bill=bill_obj,
+                    business=biz,
+                    recipient_phone=phone_num,
+                )
+                if wa_res.success:
+                    response_text = f"Bill {bill_obj.bill_number} sent on WhatsApp!"
+                else:
+                    response_text = f"WhatsApp delivery failed: {wa_res.error_message}"
+            else:
+                response_text = "No bill found to send."
+            action_type = "whatsapp_action"
+
+        else:
+            response_text = f"Executed {tool_name} successfully."
+            action_type = "tool_execution"
+
+    else:
+        response_text = gemini_res.text or "I am ready. How can I help your store today?"
+
+    duration = round((time.perf_counter() - t_start) * 1000, 2)
+    return {
+        "response_text": response_text,
+        "rule_saved": False,
+        "tool_invoked": tool_name,
+        "action_type": action_type,
+        "business_data": business_data,
+        "latencies": {"total_ms": duration},
+    }

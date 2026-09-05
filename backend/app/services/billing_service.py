@@ -220,8 +220,12 @@ class BillingService:
             raise
 
     @staticmethod
-    def get_todays_bills(db: Session, business_id: Optional[Any] = None) -> Dict[str, Any]:
-        """Fetch today's verified bills and sales totals directly from PostgreSQL."""
+    def get_todays_bills(
+        db: Session,
+        business_id: Optional[Any] = None,
+        customer_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch today's verified bills and sales totals directly from PostgreSQL, optionally filtered by customer."""
         now = datetime.now(timezone.utc)
         today_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
         today_end = datetime.combine(now.date(), time.max, tzinfo=timezone.utc)
@@ -230,6 +234,14 @@ class BillingService:
         if business_id:
             q = q.filter(Bill.business_id == business_id)
 
+        clean_customer = customer_name.strip() if customer_name else None
+        if clean_customer:
+            q = q.outerjoin(Customer, Bill.customer_id == Customer.id)
+            if clean_customer.lower() in ("walk-in", "walk-in customer", "walkin", "anonymous"):
+                q = q.filter(Bill.customer_id.is_(None))
+            else:
+                q = q.filter(Customer.name.ilike(f"%{clean_customer}%"))
+
         bills = q.order_by(Bill.created_at.desc()).all()
         total_revenue = sum(b.total_amount for b in bills) if bills else Decimal("0.00")
         paid_count = sum(1 for b in bills if b.payment_status == PaymentStatus.PAID)
@@ -237,6 +249,7 @@ class BillingService:
 
         return {
             "date": now.strftime("%Y-%m-%d"),
+            "customer_filter": clean_customer,
             "total_bills": len(bills),
             "total_revenue": float(total_revenue),
             "paid_bills_count": paid_count,

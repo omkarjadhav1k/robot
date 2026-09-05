@@ -17,7 +17,7 @@ from app.models.conversation import (
     ConversationSession,
     ConversationState,
 )
-from app.models.instruction import BusinessInstruction
+from app.models.instruction import BrainInstruction, BusinessInstruction
 from app.models.product import (
     InventoryTransaction,
     Product,
@@ -59,6 +59,7 @@ __all__ = [
     "ReminderSource",
     "NotificationCategory",
     "BusinessInstruction",
+    "BrainInstruction",
     "RobotCommand",
     "AIActivity",
     "CommandStatus",

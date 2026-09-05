@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business AI Robot — Brain Training & Operations Console</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            accent: {
+              500: '#10b981',
+              600: '#059669',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .chat-bubble-user {
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+    }
+    .chat-bubble-bot {
+      background: #1e293b;
+      border: 1px solid #334155;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+
+  <!-- TOP NAVIGATION HEADER -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-robot text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-wide flex items-center space-x-2">
+            <span>BUSINESS AI ROBOT</span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">ONLINE</span>
+          </h1>
+          <p class="text-xs text-slate-400">Central Brain & Knowledge Trainer v0.2.0</p>
+        </div>
+      </div>
+
+      <!-- Quick Stats Pills -->
+      <div class="hidden md:flex items-center space-x-4 text-xs">
+        <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-slate-400">Rules Active:</span>
+          <span id="headerActiveRules" class="font-semibold text-emerald-400">0</span>
+        </div>
+        <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-2">
+          <span class="text-slate-400">Today's Revenue:</span>
+          <span id="headerRevenue" class="font-semibold text-indigo-400">₹0.00</span>
+        </div>
+        <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-2">
+          <span class="text-slate-400">WhatsApp:</span>
+          <span id="headerWhatsAppStatus" class="font-semibold text-emerald-400">Ready</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABS BAR -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 text-sm font-medium border-t border-slate-800/50">
+      <button onclick="switchTab('tab-chat')" id="tabBtn-chat" class="tab-btn py-3 px-1 border-b-2 border-indigo-500 text-indigo-400 flex items-center space-x-2">
+        <i class="fa-solid fa-graduation-cap"></i>
+        <span>Brain Trainer & Chat</span>
+      </button>
+      <button onclick="switchTab('tab-rules')" id="tabBtn-rules" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i class="fa-solid fa-brain"></i>
+        <span>Instruction Manager</span>
+        <span id="rulesBadge" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-slate-800 text-slate-300">0</span>
+      </button>
+      <button onclick="switchTab('tab-store')" id="tabBtn-store" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i class="fa-solid fa-store"></i>
+        <span>Store & WhatsApp Hub</span>
+      </button>
+      <button onclick="switchTab('tab-hardware')" id="tabBtn-hardware" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+        <i class="fa-solid fa-microchip"></i>
+        <span>Hardware Relays</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
+
+    <!-- ============================================================== -->
+    <!-- TAB 1: BRAIN TRAINER & LIVE CHAT PLAYGROUND                    -->
+    <!-- ============================================================== -->
+    <section id="tab-chat" class="tab-content block">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left 2 Cols: Chat Window -->
+        <div class="lg:col-span-2 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden h-[680px]">
+          
+          <!-- Chat Top Bar -->
+          <div class="p-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="relative">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+                  <i class="fa-solid fa-brain text-white text-sm"></i>
+                </div>
+                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-slate-900"></span>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold">Robot Brain Conversation</h3>
+                <p class="text-xs text-slate-400">Speaks Marathi, Hindi, English • Powered by Gemini AI</p>
+              </div>
+            </div>
+
+            <!-- Teach Mode Toggle Switch -->
+            <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+              <span class="text-xs text-slate-300 font-medium">Teach Mode:</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="teachModeCheckbox" class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Messages Container -->
+          <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-4">
+            <!-- Welcome Bot Message -->
+            <div class="flex items-start space-x-3">
+              <div class="w-8 h-8 rounded-lg bg-indigo-600 flex-shrink-0 flex items-center justify-center mt-1">
+                <i class="fa-solid fa-robot text-white text-xs"></i>
+              </div>
+              <div class="chat-bubble-bot p-3.5 rounded-2xl rounded-tl-none max-w-lg text-sm text-slate-200">
+                <p>Hello! I am your <strong>Business AI Robot Brain</strong>. I manage your retail inventory, calculate bills, send invoices on WhatsApp, and control store appliances.</p>
+                <p class="mt-2 text-xs text-slate-400">💡 <strong>Tip:</strong> You can chat normally or teach me new rules anytime like <em>"Remember that Ramesh gets 5% discount"</em> or toggle <strong>Teach Mode</strong> above.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Suggestion Chips -->
+          <div class="px-4 py-2 border-t border-slate-800/60 bg-slate-900/50 flex flex-wrap gap-1.5 text-xs">
+            <button onclick="insertPrompt('Remember that Ramesh gets 5% discount')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 transition">
+              🎓 Teach: Ramesh 5% off
+            </button>
+            <button onclick="insertPrompt('Our store timing is 9am to 10pm')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">
+              🎓 Teach: Store timing
+            </button>
+            <button onclick="insertPrompt('omkar namse kon konse bill aaye hai aaj')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              🔍 Bills for Omkar
+            </button>
+            <button onclick="insertPrompt('Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              🧾 Bill + WhatsApp
+            </button>
+            <button onclick="insertPrompt('check the product build a list')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              📦 List Products
+            </button>
+          </div>
+
+          <!-- Input Field & Send Button -->
+          <form id="chatForm" onsubmit="handleSendChat(event)" class="p-3 border-t border-slate-800 bg-slate-900 flex items-center space-x-2">
+            <input
+              type="text"
+              id="chatInput"
+              placeholder="Ask anything or teach a rule (e.g. 'Remember that...')..."
+              class="flex-1 bg-slate-800 text-slate-100 placeholder-slate-400 px-4 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 text-sm"
+              autocomplete="off"
+            />
+            <button
+              type="submit"
+              id="chatSubmitBtn"
+              class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl text-sm transition flex items-center space-x-2 shadow-lg shadow-indigo-600/30"
+            >
+              <span>Send</span>
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- Right 1 Col: Live Brain Context & Active Rules Feed -->
+        <div class="flex flex-col space-y-4">
+          <!-- Active Knowledge Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 class="font-semibold text-sm flex items-center space-x-2">
+                <i class="fa-solid fa-microchip text-emerald-400"></i>
+                <span>Active Brain Memory</span>
+              </h3>
+              <span id="activeRulesCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">0 Rules Injected</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2 mb-3">These rules are dynamically injected into every voice turn and chat response:</p>
+            <div id="sideRulesList" class="space-y-2 overflow-y-auto flex-1 max-h-[380px] pr-1 text-xs">
+              <div class="text-slate-500 text-center py-6">No custom rules taught yet.<br>Type a rule in chat to teach the brain!</div>
+            </div>
+          </div>
+
+          <!-- Last AI Execution Stats Card -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl text-xs space-y-2">
+            <h4 class="font-semibold text-slate-300 flex items-center justify-between">
+              <span>Last Turn Execution</span>
+              <span id="lastLatencyBadge" class="text-slate-400">-- ms</span>
+            </h4>
+            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1">
+              <div class="flex justify-between"><span class="text-slate-400">Tool Invoked:</span> <span id="lastToolInvoked" class="font-mono text-indigo-400">None</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">Action Type:</span> <span id="lastActionType" class="text-slate-300">conversation</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">Rule Saved:</span> <span id="lastRuleSaved" class="text-emerald-400 font-semibold">No</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB 2: INSTRUCTION MANAGER & KNOWLEDGE BASE                    -->
+    <!-- ============================================================== -->
+    <section id="tab-rules" class="tab-content hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 class="text-lg font-bold flex items-center space-x-2">
+              <i class="fa-solid fa-brain text-indigo-400"></i>
+              <span>Learned Brain Instructions & Policies</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Permanent database of custom guidelines, discount rules, operating hours, and customer behaviors.</p>
+          </div>
+          <button onclick="openAddRuleModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-emerald-600/20 transition">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add New Instruction</span>
+          </button>
+        </div>
+
+        <!-- Rules Table -->
+        <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-800/80 text-slate-400 font-medium uppercase tracking-wider border-b border-slate-700">
+              <tr>
+                <th class="p-3.5">Status</th>
+                <th class="p-3.5">Category</th>
+                <th class="p-3.5">Instruction / Rule</th>
+                <th class="p-3.5">Source</th>
+                <th class="p-3.5">Added Date</th>
+                <th class="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rulesTableBody" class="divide-y divide-slate-800/70">
+              <tr>
+                <td colspan="6" class="p-6 text-center text-slate-500">Loading instructions...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB 3: STORE & WHATSAPP HUB                                   -->
+    <!-- ============================================================== -->
+    <section id="tab-store" class="tab-content hidden space-y-6">
+      <!-- Top Metrics Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Today's Sales</span>
+            <i class="fa-solid fa-indian-rupee-sign text-indigo-400"></i>
+          </div>
+          <div id="statTodayRevenue" class="text-xl font-bold text-indigo-400">₹0.00</div>
+          <div id="statTodayCount" class="text-xs text-slate-400 mt-1">0 bills generated</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Inventory Items</span>
+            <i class="fa-solid fa-boxes-stacked text-emerald-400"></i>
+          </div>
+          <div id="statTotalProducts" class="text-xl font-bold text-slate-100">0</div>
+          <div id="statLowStockCount" class="text-xs text-amber-400 mt-1">0 low stock alerts</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Customers Registered</span>
+            <i class="fa-solid fa-users text-blue-400"></i>
+          </div>
+          <div id="statTotalCustomers" class="text-xl font-bold text-slate-100">0</div>
+          <div id="statCreditDue" class="text-xs text-slate-400 mt-1">₹0.00 credit due</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>WhatsApp Cloud API</span>
+            <i class="fa-brands fa-whatsapp text-emerald-400"></i>
+          </div>
+          <div class="text-xl font-bold text-emerald-400">Meta Cloud</div>
+          <div class="text-xs text-slate-400 mt-1">Template: <span class="font-mono text-slate-300">invoice_bill_sent</span></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Live Products Inventory Table -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 flex flex-col h-[520px]">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-sm flex items-center space-x-2">
+              <i class="fa-solid fa-boxes-stacked text-indigo-400"></i>
+              <span>Store Inventory & Stock</span>
+            </h3>
+            <button onclick="loadStoreData()" class="text-xs text-slate-400 hover:text-white"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          </div>
+          <div class="flex-1 overflow-y-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-800/80 text-slate-400 uppercase tracking-wider sticky top-0">
+                <tr>
+                  <th class="p-3">Product</th>
+                  <th class="p-3">Price</th>
+                  <th class="p-3">Stock</th>
+                  <th class="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody" class="divide-y divide-slate-800/60">
+                <tr><td colspan="4" class="p-4 text-center text-slate-500">Loading inventory...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Today's Invoices & WhatsApp Quick Sender -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 flex flex-col h-[520px]">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-sm flex items-center space-x-2">
+              <i class="fa-solid fa-receipt text-emerald-400"></i>
+              <span>Today's Invoices</span>
+            </h3>
+            <button onclick="loadStoreData()" class="text-xs text-slate-400 hover:text-white"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          </div>
+          <div class="flex-1 overflow-y-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-800/80 text-slate-400 uppercase tracking-wider sticky top-0">
+                <tr>
+                  <th class="p-3">Bill #</th>
+                  <th class="p-3">Customer</th>
+                  <th class="p-3">Amount</th>
+                  <th class="p-3">Status</th>
+                  <th class="p-3 text-right">WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody id="billsTableBody" class="divide-y divide-slate-800/60">
+                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading today's bills...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB 4: HARDWARE RELAYS & STATUS LED                            -->
+    <!-- ============================================================== -->
+    <section id="tab-hardware" class="tab-content hidden">
+      <div class="max-w-4xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <h2 class="text-lg font-bold flex items-center space-x-2 mb-2">
+          <i class="fa-solid fa-microchip text-indigo-400"></i>
+          <span>Robot Hardware Control Simulator</span>
+        </h2>
+        <p class="text-xs text-slate-400 mb-6">Test electrical appliance relay switches (1 to 4) and hardware LED blinking directly through the Central Brain.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <!-- Relay 1 -->
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+            <div id="relayIcon1" class="w-12 h-12 rounded-xl bg-slate-700 text-slate-400 flex items-center justify-center text-xl mb-3 transition">
+              <i class="fa-solid fa-lightbulb"></i>
+            </div>
+            <h4 class="text-sm font-semibold mb-1">Relay 1 (Main Light)</h4>
+            <span id="relayStatus1" class="text-xs text-slate-400 mb-4">OFF</span>
+            <div class="flex space-x-2 w-full">
+              <button onclick="controlRelay(1, 'on')" class="flex-1 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition">ON</button>
+              <button onclick="controlRelay(1, 'off')" class="flex-1 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold border border-rose-500/30 transition">OFF</button>
+            </div>
+          </div>
+
+          <!-- Relay 2 -->
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+            <div id="relayIcon2" class="w-12 h-12 rounded-xl bg-slate-700 text-slate-400 flex items-center justify-center text-xl mb-3 transition">
+              <i class="fa-solid fa-fan"></i>
+            </div>
+            <h4 class="text-sm font-semibold mb-1">Relay 2 (Fan)</h4>
+            <span id="relayStatus2" class="text-xs text-slate-400 mb-4">OFF</span>
+            <div class="flex space-x-2 w-full">
+              <button onclick="controlRelay(2, 'on')" class="flex-1 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition">ON</button>
+              <button onclick="controlRelay(2, 'off')" class="flex-1 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold border border-rose-500/30 transition">OFF</button>
+            </div>
+          </div>
+
+          <!-- Relay 3 -->
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+            <div id="relayIcon3" class="w-12 h-12 rounded-xl bg-slate-700 text-slate-400 flex items-center justify-center text-xl mb-3 transition">
+              <i class="fa-solid fa-plug"></i>
+            </div>
+            <h4 class="text-sm font-semibold mb-1">Relay 3 (Socket)</h4>
+            <span id="relayStatus3" class="text-xs text-slate-400 mb-4">OFF</span>
+            <div class="flex space-x-2 w-full">
+              <button onclick="controlRelay(3, 'on')" class="flex-1 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition">ON</button>
+              <button onclick="controlRelay(3, 'off')" class="flex-1 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold border border-rose-500/30 transition">OFF</button>
+            </div>
+          </div>
+
+          <!-- Relay 4 -->
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+            <div id="relayIcon4" class="w-12 h-12 rounded-xl bg-slate-700 text-slate-400 flex items-center justify-center text-xl mb-3 transition">
+              <i class="fa-solid fa-power-off"></i>
+            </div>
+            <h4 class="text-sm font-semibold mb-1">Relay 4 (Aux)</h4>
+            <span id="relayStatus4" class="text-xs text-slate-400 mb-4">OFF</span>
+            <div class="flex space-x-2 w-full">
+              <button onclick="controlRelay(4, 'on')" class="flex-1 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition">ON</button>
+              <button onclick="controlRelay(4, 'off')" class="flex-1 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-lg text-xs font-semibold border border-rose-500/30 transition">OFF</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hardware Status LED Blinker -->
+        <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div id="ledIndicator" class="w-6 h-6 rounded-full bg-slate-700 border-2 border-slate-600 transition"></div>
+            <div>
+              <h4 class="text-sm font-semibold">Robot Hardware Status LED</h4>
+              <p class="text-xs text-slate-400">Trigger multi-pulse blink routine on GPIO status pin</p>
+            </div>
+          </div>
+          <button onclick="blinkLed(3)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+            Blink 3 Times
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ADD RULE MODAL DIALOG -->
+  <div id="addRuleModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-sm flex items-center space-x-2">
+          <i class="fa-solid fa-plus-circle text-emerald-400"></i>
+          <span>Add Custom Brain Instruction</span>
+        </h3>
+        <button onclick="closeAddRuleModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form onsubmit="handleSaveRule(event)" class="mt-4 space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Instruction / Policy Statement</label>
+          <textarea
+            id="ruleInstructionInput"
+            rows="3"
+            required
+            placeholder="e.g. Ramesh gets 5% discount on all purchases, or Store opens at 8am and closes at 10pm"
+            class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+          ></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Category</label>
+          <select id="ruleCategoryInput" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+            <option value="RULE">General Store Rule (RULE)</option>
+            <option value="DISCOUNT">Customer Discount / Offer (DISCOUNT)</option>
+            <option value="TIMING">Store Timing & Hours (TIMING)</option>
+            <option value="CREDIT">Udhar / Credit Limit Policy (CREDIT)</option>
+            <option value="BEHAVIOR">Robot Speech & Behavior (BEHAVIOR)</option>
+          </select>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-3 border-t border-slate-800">
+          <button type="button" onclick="closeAddRuleModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs shadow-lg shadow-emerald-600/30">Save Rule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- WHATSAPP SEND MODAL -->
+  <div id="whatsAppModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-sm flex items-center space-x-2">
+          <i class="fa-brands fa-whatsapp text-emerald-400"></i>
+          <span>Send Bill via WhatsApp</span>
+        </h3>
+        <button onclick="closeWhatsAppModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form onsubmit="handleSendWhatsAppModal(event)" class="mt-4 space-y-4">
+        <input type="hidden" id="waBillId">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Bill Number</label>
+          <input type="text" id="waBillNum" readonly class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-400">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Customer Name</label>
+          <input type="text" id="waCustName" readonly class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-400">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">WhatsApp Phone Number (10 digits)</label>
+          <input type="tel" id="waPhoneInput" required placeholder="e.g. 9699779276" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-3 border-t border-slate-800">
+          <button type="button" onclick="closeWhatsAppModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs">Cancel</button>
+          <button type="submit" id="waSubmitBtn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs shadow-lg shadow-emerald-600/30">Send Bill Now</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('border-indigo-500', 'text-indigo-400');
+        el.classList.add('border-transparent', 'text-slate-400');
+      });
+
+      document.getElementById(tabId).classList.remove('hidden');
+      const btn = document.getElementById('tabBtn-' + tabId.replace('tab-', ''));
+      if (btn) {
+        btn.classList.add('border-indigo-500', 'text-indigo-400');
+        btn.classList.remove('border-transparent', 'text-slate-400');
+      }
+
+      if (tabId === 'tab-rules') loadRules();
+      if (tabId === 'tab-store') loadStoreData();
+    }
+
+    function insertPrompt(txt) {
+      const input = document.getElementById('chatInput');
+      input.value = txt;
+      input.focus();
+    }
+
+    // Live Chat Handler
+    async function handleSendChat(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const teachMode = document.getElementById('teachModeCheckbox').checked;
+      input.value = '';
+
+      // Append User message bubble
+      appendMessage('user', text);
+
+      // Loading bubble
+      const loadingId = appendLoadingBubble();
+
+      try {
+        const res = await fetch('/api/v1/admin/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, teach_mode: teachMode })
+        });
+        const data = await res.json();
+        removeElement(loadingId);
+
+        if (res.ok) {
+          appendMessage('bot', data.response_text, data);
+          // Update Execution stats card
+          document.getElementById('lastLatencyBadge').innerText = (data.latencies?.total_ms || 0) + ' ms';
+          document.getElementById('lastToolInvoked').innerText = data.tool_invoked || 'None';
+          document.getElementById('lastActionType').innerText = data.action_type || 'conversation';
+          document.getElementById('lastRuleSaved').innerText = data.rule_saved ? 'Yes (' + data.rule_category + ')' : 'No';
+
+          if (data.rule_saved) {
+            refreshRulesList();
+          }
+        } else {
+          appendMessage('bot', 'Error: ' + (data.detail || 'Could not process request'));
+        }
+      } catch (err) {
+        removeElement(loadingId);
+        appendMessage('bot', 'Network error connecting to robot central brain: ' + err.message);
+      }
+    }
+
+    function appendMessage(role, text, meta = null) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'flex items-start space-x-3 ' + (role === 'user' ? 'justify-end' : '');
+
+      let html = '';
+      if (role === 'user') {
+        html = `
+          <div class="chat-bubble-user text-white p-3.5 rounded-2xl rounded-tr-none max-w-lg text-sm shadow-md">
+            ${escapeHtml(text)}
+          </div>
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex-shrink-0 flex items-center justify-center mt-1">
+            <i class="fa-solid fa-user text-xs"></i>
+          </div>
+        `;
+      } else {
+        let extraBadge = '';
+        if (meta?.rule_saved) {
+          extraBadge = `<span class="inline-block mt-2 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold"><i class="fa-solid fa-check"></i> Memorized to Brain DB</span>`;
+        } else if (meta?.tool_invoked) {
+          extraBadge = `<span class="inline-block mt-2 px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-mono"><i class="fa-solid fa-bolt"></i> Tool: ${meta.tool_invoked}</span>`;
+        }
+
+        html = `
+          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex-shrink-0 flex items-center justify-center mt-1">
+            <i class="fa-solid fa-robot text-white text-xs"></i>
+          </div>
+          <div class="chat-bubble-bot p-3.5 rounded-2xl rounded-tl-none max-w-lg text-sm text-slate-200 shadow-md">
+            <div>${escapeHtml(text)}</div>
+            ${extraBadge}
+          </div>
+        `;
+      }
+      div.innerHTML = html;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function appendLoadingBubble() {
+      const id = 'loading-' + Date.now();
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'flex items-start space-x-3';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex-shrink-0 flex items-center justify-center mt-1">
+          <i class="fa-solid fa-robot text-white text-xs"></i>
+        </div>
+        <div class="chat-bubble-bot p-3.5 rounded-2xl rounded-tl-none text-sm text-slate-400 flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0.2s]"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0.4s]"></span>
+          <span class="text-xs ml-1 text-slate-400">Brain reasoning...</span>
+        </div>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return id;
+    }
+
+    function removeElement(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Load instructions list
+    async function loadRules() {
+      const tbody = document.getElementById('rulesTableBody');
+      tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500">Loading instructions...</td></tr>`;
+
+      try {
+        const res = await fetch('/api/v1/admin/instructions');
+        const list = await res.json();
+        renderRulesTable(list);
+        renderSideRules(list);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-rose-400">Failed to load: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderRulesTable(list) {
+      const tbody = document.getElementById('rulesTableBody');
+      const badge = document.getElementById('rulesBadge');
+      badge.innerText = list.length;
+
+      if (!list || list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500">No brain instructions recorded yet.<br>Click "Add New Instruction" or chat with Teach Mode!</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map(item => `
+        <tr class="hover:bg-slate-800/40 transition">
+          <td class="p-3.5">
+            <button onclick="toggleRule('${item.id}', ${!item.is_active})" class="relative inline-flex items-center cursor-pointer">
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${item.is_active ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'}">
+                ${item.is_active ? 'ACTIVE' : 'DISABLED'}
+              </span>
+            </button>
+          </td>
+          <td class="p-3.5 font-mono text-indigo-300 font-semibold">${escapeHtml(item.category)}</td>
+          <td class="p-3.5 text-slate-200 max-w-md">${escapeHtml(item.instruction)}</td>
+          <td class="p-3.5 text-slate-400 text-[11px]">${escapeHtml(item.source)}</td>
+          <td class="p-3.5 text-slate-500 text-[11px]">${item.created_at ? item.created_at.slice(0,10) : '--'}</td>
+          <td class="p-3.5 text-right space-x-2">
+            <button onclick="toggleRule('${item.id}', ${!item.is_active})" class="text-xs text-slate-400 hover:text-indigo-400 transition" title="Toggle Active">
+              <i class="fa-solid fa-power-off"></i>
+            </button>
+            <button onclick="deleteRule('${item.id}')" class="text-xs text-slate-400 hover:text-rose-400 transition" title="Delete Rule">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderSideRules(list) {
+      const active = list.filter(i => i.is_active);
+      document.getElementById('headerActiveRules').innerText = active.length;
+      document.getElementById('activeRulesCountBadge').innerText = active.length + ' Rules Injected';
+
+      const sideContainer = document.getElementById('sideRulesList');
+      if (active.length === 0) {
+        sideContainer.innerHTML = `<div class="text-slate-500 text-center py-6">No active rules injected.<br>Add rules to customize store AI!</div>`;
+        return;
+      }
+
+      sideContainer.innerHTML = active.map(i => `
+        <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-start space-x-2">
+          <span class="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-semibold">${i.category}</span>
+          <p class="text-slate-300 leading-snug flex-1">${escapeHtml(i.instruction)}</p>
+        </div>
+      `).join('');
+    }
+
+    async function toggleRule(id, newState) {
+      await fetch(`/api/v1/admin/instructions/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newState })
+      });
+      loadRules();
+    }
+
+    async function deleteRule(id) {
+      if (!confirm('Are you sure you want to remove this rule from the robot brain?')) return;
+      await fetch(`/api/v1/admin/instructions/${id}`, { method: 'DELETE' });
+      loadRules();
+    }
+
+    function openAddRuleModal() {
+      document.getElementById('addRuleModal').classList.remove('hidden');
+    }
+    function closeAddRuleModal() {
+      document.getElementById('addRuleModal').classList.add('hidden');
+    }
+
+    async function handleSaveRule(e) {
+      e.preventDefault();
+      const instruction = document.getElementById('ruleInstructionInput').value.trim();
+      const category = document.getElementById('ruleCategoryInput').value;
+      if (!instruction) return;
+
+      const res = await fetch('/api/v1/admin/instructions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction, category })
+      });
+      if (res.ok) {
+        document.getElementById('ruleInstructionInput').value = '';
+        closeAddRuleModal();
+        loadRules();
+      } else {
+        alert('Failed to save instruction');
+      }
+    }
+
+    async function refreshRulesList() {
+      const res = await fetch('/api/v1/admin/instructions');
+      if (res.ok) {
+        const list = await res.json();
+        renderRulesTable(list);
+        renderSideRules(list);
+      }
+    }
+
+    // Load Store, Stats, and Bills Data
+    async function loadStoreData() {
+      try {
+        const res = await fetch('/api/v1/admin/stats');
+        const data = await res.json();
+
+        // Metrics
+        document.getElementById('statTodayRevenue').innerText = '₹' + data.today_revenue.toFixed(2);
+        document.getElementById('headerRevenue').innerText = '₹' + data.today_revenue.toFixed(2);
+        document.getElementById('statTodayCount').innerText = data.today_bills_count + ' bills generated';
+        document.getElementById('statTotalProducts').innerText = data.total_products;
+        document.getElementById('statLowStockCount').innerText = data.low_stock_count + ' low stock alerts';
+        document.getElementById('statTotalCustomers').innerText = data.total_customers;
+        document.getElementById('statCreditDue').innerText = '₹' + data.total_credit_due.toFixed(2) + ' credit due';
+
+        // Products table
+        const prodTbody = document.getElementById('inventoryTableBody');
+        prodTbody.innerHTML = data.products.map(p => `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="p-3 font-medium text-slate-200">${escapeHtml(p.name)}</td>
+            <td class="p-3 font-semibold text-indigo-400">₹${p.selling_price.toFixed(2)}</td>
+            <td class="p-3 font-mono">${p.current_stock.toFixed(1)} ${p.unit}</td>
+            <td class="p-3">
+              <span class="px-2 py-0.5 text-[10px] rounded-full font-bold ${p.current_stock <= p.minimum_stock ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}">
+                ${p.current_stock <= p.minimum_stock ? 'LOW STOCK' : 'IN STOCK'}
+              </span>
+            </td>
+          </tr>
+        `).join('');
+
+        // Bills table
+        const billsTbody = document.getElementById('billsTableBody');
+        if (!data.recent_bills || data.recent_bills.length === 0) {
+          billsTbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">No bills generated today</td></tr>`;
+        } else {
+          billsTbody.innerHTML = data.recent_bills.map(b => `
+            <tr class="hover:bg-slate-800/40 transition">
+              <td class="p-3 font-mono text-slate-300 font-semibold">${escapeHtml(b.bill_number)}</td>
+              <td class="p-3 text-slate-200">${escapeHtml(b.customer_name)}</td>
+              <td class="p-3 font-semibold text-emerald-400">₹${b.total_amount.toFixed(2)}</td>
+              <td class="p-3 text-[10px]"><span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">${b.status}</span></td>
+              <td class="p-3 text-right">
+                <button onclick="openWhatsAppModal('${b.bill_number}', '${b.customer_name}', '${b.customer_phone || ''}')" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 transition text-[11px] font-semibold flex items-center space-x-1 ml-auto">
+                  <i class="fa-brands fa-whatsapp"></i>
+                  <span>Send</span>
+                </button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load store data:', err);
+      }
+    }
+
+    // WhatsApp Modal
+    function openWhatsAppModal(billNum, custName, phone) {
+      document.getElementById('waBillNum').value = billNum;
+      document.getElementById('waCustName').value = custName;
+      document.getElementById('waPhoneInput').value = phone || '';
+      document.getElementById('whatsAppModal').classList.remove('hidden');
+    }
+    function closeWhatsAppModal() {
+      document.getElementById('whatsAppModal').classList.add('hidden');
+    }
+
+    async function handleSendWhatsAppModal(e) {
+      e.preventDefault();
+      const billNum = document.getElementById('waBillNum').value;
+      const phone = document.getElementById('waPhoneInput').value.trim();
+      const btn = document.getElementById('waSubmitBtn');
+      btn.innerText = 'Sending...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/v1/whatsapp/send-invoice/${billNum}?recipient_phone=${phone}`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok && result.success) {
+          alert('✅ Invoice successfully dispatched on WhatsApp to ' + phone);
+          closeWhatsAppModal();
+        } else {
+          alert('❌ WhatsApp Error: ' + (result.error_message || result.detail || 'Failed to dispatch'));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      } finally {
+        btn.innerText = 'Send Bill Now';
+        btn.disabled = false;
+      }
+    }
+
+    // Hardware Controls
+    async function controlRelay(relayNum, state) {
+      const icon = document.getElementById('relayIcon' + relayNum);
+      const label = document.getElementById('relayStatus' + relayNum);
+      try {
+        await fetch(`/api/v1/voice/interact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: `Turn ${state} relay ${relayNum}` })
+        });
+        if (state === 'on') {
+          icon.className = 'w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center text-xl mb-3 shadow-lg shadow-amber-500/30 transition';
+          label.innerText = 'ON';
+          label.className = 'text-xs text-amber-400 font-bold mb-4';
+        } else {
+          icon.className = 'w-12 h-12 rounded-xl bg-slate-700 text-slate-400 flex items-center justify-center text-xl mb-3 transition';
+          label.innerText = 'OFF';
+          label.className = 'text-xs text-slate-400 mb-4';
+        }
+      } catch (e) {
+        console.error('Relay error', e);
+      }
+    }
+
+    async function blinkLed(times) {
+      const led = document.getElementById('ledIndicator');
+      led.className = 'w-6 h-6 rounded-full bg-emerald-400 border-2 border-white animate-ping';
+      try {
+        await fetch(`/api/v1/voice/interact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: `Blink the LED ${times} times` })
+        });
+      } finally {
+        setTimeout(() => {
+          led.className = 'w-6 h-6 rounded-full bg-slate-700 border-2 border-slate-600 transition';
+        }, 1500);
+      }
+    }
+
+    // Initial Load
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshRulesList();
+      loadStoreData();
+    });
+  </script>
+</body>
+</html>

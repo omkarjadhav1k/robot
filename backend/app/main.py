@@ -154,6 +154,7 @@ def create_application() -> FastAPI:
             "version": settings.VERSION,
             "status": "online",
             "docs": "/docs",
+            "admin": "/admin",
             "health": "/health",
         }
 

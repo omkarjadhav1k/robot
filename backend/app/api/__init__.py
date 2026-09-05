@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api.admin import router as admin_router
 from app.api.business import router as business_router
 from app.api.health import router as health_router
 from app.api.robots import router as robots_router
@@ -13,4 +14,5 @@ api_router.include_router(robots_router, prefix="/robots", tags=["robots"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(business_router, tags=["business"])
 api_router.include_router(whatsapp_router, prefix="/whatsapp", tags=["whatsapp"])
+api_router.include_router(admin_router, tags=["admin"])
 

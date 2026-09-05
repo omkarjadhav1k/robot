@@ -19,9 +19,10 @@ SYSTEM_INSTRUCTION = (
     "4. When asked to add, register, or create a new product/sample product in the store/inventory, use the add_product tool.\n"
     "5. When asked for all products, inventory list, stock count, or overview (e.g., 'check stock', 'check all products', 'build a list', 'how many items in stock', 'sagle kiti product aahe' in Marathi/Hindi/English), use the list_all_products tool.\n"
     "6. You understand English, Hindi, and Marathi. When user speaks in Marathi or Hindi, understand and respond appropriately.\n"
-    "7. When asked who was billed today, which customers got bills, or customer names for bills (e.g. 'kona konala bill dile', 'who received bills', 'customer name', 'show bills list'), use the get_todays_bills tool.\n"
+    "7. When asked who was billed today, which customers got bills, customer names for bills (e.g. 'kona konala bill dile', 'who received bills', 'today bills'), or bills for a SPECIFIC person (e.g. 'omkar namse kon konse bill aaye hai', 'sirf omkar name se chahiye', 'rahul ke kitne bill hai'), use get_todays_bills. ALWAYS pass customer_name parameter if the user asks for bills of a specific person or says 'sirf [name]'.\n"
     "8. When asked to bill and WhatsApp (e.g. 'Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do', 'bill bana ke WhatsApp bhej do', 'WhatsApp kar do'), use create_bill with send_whatsapp=true. When asked to send an existing invoice on WhatsApp, use send_whatsapp_bill.\n"
-    "9. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "9. If the user provides a phone number after a WhatsApp send error or bill request (e.g. '+91 9699779276', '9699779276', 'Rahul ka number 9699779276 hai'), use send_whatsapp_bill with phone_number.\n"
+    "10. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
 )
 
 FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
@@ -62,10 +63,15 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "get_todays_bills",
-                "description": "Retrieve today's verified bills, list of customers who were billed, total revenue, and bill amounts (e.g. 'who was billed today', 'kona konala bill dile', 'customer names for bills', 'today bills').",
+                "description": "Retrieve today's verified bills, list of customers who were billed, total revenue, and bill amounts (e.g. 'who was billed today', 'kona konala bill dile', 'today bills', 'omkar namse bill', 'sirf omkar name se').",
                 "parameters": {
                     "type": "OBJECT",
-                    "properties": {},
+                    "properties": {
+                        "customer_name": {
+                            "type": "STRING",
+                            "description": "Filter bills by customer name (e.g. 'Omkar', 'Rahul', 'Walk-in') if requested by user.",
+                        }
+                    },
                 },
             },
             {
@@ -220,9 +226,11 @@ async def reason_with_gemini(
     user_text: str,
     history: Optional[List[Dict[str, str]]] = None,
     api_key: Optional[str] = None,
+    custom_instructions: Optional[List[str]] = None,
+    system_instruction: Optional[str] = None,
 ) -> GeminiResult:
     """
-    Query Google Gemini with multi-turn history and function calling tools enabled.
+    Query Google Gemini with multi-turn history, dynamic custom instructions, and function calling tools enabled.
     Returns GeminiResult containing either natural language text or a structured function call.
     """
     settings = get_settings()
@@ -245,6 +253,15 @@ async def reason_with_gemini(
         models_to_try = list(fast_models)
     if "gemini-3.7-flash" not in models_to_try:
         models_to_try.append("gemini-3.7-flash")
+
+    # Build active system prompt including any learned brain instructions
+    active_system_prompt = system_instruction or SYSTEM_INSTRUCTION
+    if custom_instructions:
+        active_system_prompt += "\n\nACTIVE CUSTOM STORE RULES & LEARNED BRAIN INSTRUCTIONS:\n"
+        for idx, rule in enumerate(custom_instructions, 1):
+            rule_clean = rule.strip()
+            if rule_clean:
+                active_system_prompt += f"{idx}. {rule_clean}\n"
 
     # Format multi-turn contents
     contents: List[Dict[str, Any]] = []
@@ -270,7 +287,7 @@ async def reason_with_gemini(
         "contents": contents,
         "tools": BUSINESS_TOOLS,
         "systemInstruction": {
-            "parts": [{"text": SYSTEM_INSTRUCTION}]
+            "parts": [{"text": active_system_prompt}]
         },
         "generationConfig": {
             "temperature": 0.2,  # Low temperature for strict, reliable tool selection

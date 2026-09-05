@@ -18,3 +18,13 @@ class BusinessInstruction(Base, UUIDPrimaryKeyMixin, TenantMixin, TimestampMixin
 
     # Relationships
     business = relationship("Business", back_populates="instructions")
+
+
+class BrainInstruction(Base, UUIDPrimaryKeyMixin, TenantMixin, TimestampMixin):
+    """Specific operational rule, custom knowledge, or behavioral instruction learned by the Robot Brain."""
+    __tablename__ = "brain_instructions"
+
+    instruction = Column(Text, nullable=False)
+    category = Column(String(50), nullable=False, default="RULE")  # RULE, DISCOUNT, TIMING, FAQ, BEHAVIOR, POLICY
+    is_active = Column(Boolean, nullable=False, default=True)
+    source = Column(String(50), nullable=False, default="WEB_PANEL")  # WEB_PANEL, CHAT_TEACH, VOICE, SEED

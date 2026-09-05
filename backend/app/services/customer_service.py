@@ -50,6 +50,10 @@ class CustomerService:
         """Fetch existing customer by name/phone or create a new customer record."""
         customer = CustomerService.search_customer(db, name, business_id)
         if customer:
+            if phone and phone != "0000000000" and customer.phone != phone:
+                customer.phone = phone
+                db.commit()
+                db.refresh(customer)
             return customer
 
         if not business_id:

@@ -25,6 +25,7 @@ from app.schemas.robot import (
     VoiceInteractResponse,
 )
 from app.services.billing_service import BillingService
+from app.services.brain_service import BrainService
 from app.services.conversation_service import ConversationService
 from app.services.customer_service import CustomerService
 from app.services.inventory_service import InventoryService
@@ -252,7 +253,62 @@ async def process_voice_interaction(
             latencies={"total_ms": round((time.perf_counter() - t_start) * 1000, 2)},
         )
 
-    # 4. Multi-Turn Gemini AI Reasoning with Function Calling
+    # 3b. Brain Rule Teaching Fast-Path (e.g. "Remember that...", "Rule: ...")
+    learned_rule = BrainService.detect_and_learn_rule(db, prompt, source="VOICE_OR_CHAT", business_id=session.business_id)
+    if learned_rule:
+        teach_reply = f"I have memorized this {learned_rule.category.lower()} rule: '{learned_rule.instruction}'."
+        ConversationService.append_message(db, session, role="user", content=prompt)
+        ConversationService.append_message(db, session, role="assistant", content=teach_reply)
+        return VoiceInteractResponse(
+            response_text=teach_reply,
+            action_type="brain_learning",
+            conversation_id=session.conversation_id,
+            immediate_ack=immediate_ack,
+            state=session.state.value,
+            latencies={"total_ms": round((time.perf_counter() - t_start) * 1000, 2)},
+        )
+
+    # 3c. Standalone Phone Number Input Fast-Path (e.g. "+91 9699779276" or "9699779276")
+    phone_digits = re.sub(r'[^0-9]', '', prompt)
+    if (len(phone_digits) == 10 and phone_digits[0] in "6789") or (len(phone_digits) == 12 and phone_digits.startswith("91")):
+        target_phone = phone_digits[-10:]
+        latest_bill = (
+            db.query(Bill)
+            .options(joinedload(Bill.customer), joinedload(Bill.items))
+            .order_by(Bill.created_at.desc())
+            .first()
+        )
+        if latest_bill:
+            if latest_bill.customer:
+                latest_bill.customer.phone = target_phone
+                db.commit()
+            biz_obj = (
+                db.query(Business).filter(Business.id == latest_bill.business_id).first()
+                if latest_bill.business_id
+                else db.query(Business).first()
+            )
+            res = await WhatsAppService.send_invoice_via_whatsapp(
+                bill=latest_bill,
+                business=biz_obj,
+                recipient_phone=target_phone,
+            )
+            c_name = latest_bill.customer.name if latest_bill.customer else "customer"
+            if res.success:
+                phone_reply = f"Updated {c_name}'s phone to {target_phone} and sent bill {latest_bill.bill_number} on WhatsApp."
+            else:
+                phone_reply = f"Updated {c_name}'s phone to {target_phone}, but WhatsApp delivery failed: {res.error_message or 'Please check WhatsApp credentials on server'}."
+            ConversationService.append_message(db, session, role="user", content=prompt)
+            ConversationService.append_message(db, session, role="assistant", content=phone_reply)
+            return VoiceInteractResponse(
+                response_text=phone_reply,
+                action_type="whatsapp_action",
+                conversation_id=session.conversation_id,
+                immediate_ack=immediate_ack,
+                state=session.state.value,
+                latencies={"total_ms": round((time.perf_counter() - t_start) * 1000, 2)},
+            )
+
+    # 4. Multi-Turn Gemini AI Reasoning with Function Calling & Dynamic Brain Instructions
     # Fetch recent history turns
     history_records = ConversationService.get_history(db, session.id, limit=8)
     history_payload = [
@@ -260,8 +316,14 @@ async def process_voice_interaction(
         for m in history_records
     ]
 
+    custom_instrs = BrainService.get_instruction_strings(db, session.business_id)
+
     t_ai_start = time.perf_counter()
-    gemini_res = await reason_with_gemini(user_text=prompt, history=history_payload)
+    gemini_res = await reason_with_gemini(
+        user_text=prompt,
+        history=history_payload,
+        custom_instructions=custom_instrs,
+    )
     ai_duration = (time.perf_counter() - t_ai_start) * 1000
 
     response_text = ""
@@ -327,7 +389,14 @@ async def process_voice_interaction(
                 response_text = "All products currently meet minimum inventory levels."
 
         elif fn_name == "get_todays_bills":
-            bills_info = BillingService.get_todays_bills(db, session.business_id)
+            cust_filter = (args.get("customer_name") or "").strip()
+            if cust_filter.lower() in ("all", "everyone", "sab", "sagle", "list", "customer name", "none", "null"):
+                cust_filter = ""
+            bills_info = BillingService.get_todays_bills(
+                db=db,
+                business_id=session.business_id,
+                customer_name=cust_filter if cust_filter else None,
+            )
             business_data = bills_info
             action_type = "business_query"
             total_b = bills_info.get("total_bills", 0)
@@ -335,16 +404,27 @@ async def process_voice_interaction(
             recent_b = bills_info.get("recent_bills", [])
 
             if total_b == 0:
-                response_text = "No bills have been generated today."
+                if cust_filter:
+                    response_text = f"No bills were found for customer '{cust_filter}' today."
+                else:
+                    response_text = "No bills have been generated today."
             else:
-                cust_details = []
-                for b in recent_b[:5]:
-                    c_name = b.get("customer_name") or "Walk-in Customer"
-                    amt = b.get("total_amount", 0.0)
-                    cust_details.append(f"{c_name} (₹{amt:.2f})")
-                cust_str = ", ".join(cust_details)
-                more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
-                response_text = f"Today {total_b} bills were given totaling ₹{total_rev:.2f} to: {cust_str}{more_suffix}."
+                if cust_filter:
+                    b_list = [f"{b.get('bill_number')} (₹{b.get('total_amount', 0.0):.2f})" for b in recent_b[:5]]
+                    more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
+                    response_text = (
+                        f"Today for customer '{cust_filter}', {total_b} bill{'s were' if total_b > 1 else ' was'} "
+                        f"found totaling ₹{total_rev:.2f}: {', '.join(b_list)}{more_suffix}."
+                    )
+                else:
+                    cust_details = []
+                    for b in recent_b[:5]:
+                        c_name = b.get("customer_name") or "Walk-in Customer"
+                        amt = b.get("total_amount", 0.0)
+                        cust_details.append(f"{c_name} (₹{amt:.2f})")
+                    cust_str = ", ".join(cust_details)
+                    more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
+                    response_text = f"Today {total_b} bills were given totaling ₹{total_rev:.2f} to: {cust_str}{more_suffix}."
 
         elif fn_name == "get_customer_balance":
             cust_name = args.get("customer_name", "").strip()
@@ -533,6 +613,13 @@ async def process_voice_interaction(
                     if bill_obj.business_id
                     else db.query(Business).first()
                 )
+                if phone_num and bill_obj.customer:
+                    clean_p = re.sub(r'[^0-9]', '', str(phone_num))
+                    if len(clean_p) >= 10:
+                        bill_obj.customer.phone = clean_p[-10:]
+                        db.commit()
+                        db.refresh(bill_obj.customer)
+
                 res = await WhatsAppService.send_invoice_via_whatsapp(
                     bill=bill_obj,
                     business=business_obj,
@@ -546,8 +633,8 @@ async def process_voice_interaction(
                     )
                 else:
                     response_text = (
-                        "I generated the bill, but I couldn't send it on WhatsApp. "
-                        "Please check the customer's WhatsApp number."
+                        f"I generated the bill, but I couldn't send it on WhatsApp: "
+                        f"{res.error_message or 'Please check customer WhatsApp number.'}"
                     )
             action_type = "whatsapp_action"
 
