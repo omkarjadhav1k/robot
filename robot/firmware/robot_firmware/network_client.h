@@ -214,7 +214,7 @@ public:
         } else if (action == "set_all_relays") {
             String state = _extractJsonString(cmdJson, "state");
             bool turnOn = (state == "on" || state == "1" || state == "true");
-            _relays->setAll(turnOn);
+            _relays->setAllRelays(turnOn);
             success = true;
             message = "All relays set to " + String(turnOn ? "ON" : "OFF");
             _display->showStatus("EXECUTED", message, _relays->getRelaysJson());
