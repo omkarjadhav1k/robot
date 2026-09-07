@@ -13,6 +13,10 @@ from app.services.report_service import ReportService
 
 def test_inventory_service_stock_truth(db_session: Session, default_business: Business):
     """Ensure stock queries return actual database truth, never hallucinations."""
+    # Clean any prior test products for this tenant to ensure isolated count
+    db_session.query(Product).filter(Product.business_id == default_business.id).delete()
+    db_session.commit()
+
     # Seed known products
     p1 = Product(
         name="Basmati Rice",

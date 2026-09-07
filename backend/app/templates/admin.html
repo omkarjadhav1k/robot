@@ -127,13 +127,27 @@
               </div>
             </div>
 
-            <!-- Teach Mode Toggle Switch -->
-            <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
-              <span class="text-xs text-slate-300 font-medium">Teach Mode:</span>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="teachModeCheckbox" class="sr-only peer">
-                <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
+            <div class="flex items-center space-x-3">
+              <!-- Auto-Speak Toggle Switch -->
+              <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+                <span class="text-xs text-indigo-300 font-medium flex items-center space-x-1">
+                  <i class="fa-solid fa-volume-high text-xs"></i>
+                  <span>Auto-Speak:</span>
+                </span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="autoSpeakCheckbox" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                </label>
+              </div>
+
+              <!-- Teach Mode Toggle Switch -->
+              <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-300 font-medium">Teach Mode:</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="teachModeCheckbox" class="sr-only peer">
+                  <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -145,28 +159,43 @@
                 <i class="fa-solid fa-robot text-white text-xs"></i>
               </div>
               <div class="chat-bubble-bot p-3.5 rounded-2xl rounded-tl-none max-w-lg text-sm text-slate-200">
-                <p>Hello! I am your <strong>Business AI Robot Brain</strong>. I manage your retail inventory, calculate bills, send invoices on WhatsApp, and control store appliances.</p>
-                <p class="mt-2 text-xs text-slate-400">💡 <strong>Tip:</strong> You can chat normally or teach me new rules anytime like <em>"Remember that Ramesh gets 5% discount"</em> or toggle <strong>Teach Mode</strong> above.</p>
+                <p>Hello! I am your <strong>Business AI Robot Brain</strong>. I understand natural speech in Hindi, Marathi, and English. I manage retail inventory, calculate bills, send invoices on WhatsApp, and control store appliances.</p>
+                <p class="mt-2 text-xs text-slate-400">💡 <strong>Tip:</strong> Try saying <em>"Tata Salt ka stock kitna hai?"</em>, <em>"Usme se 5 bech diye"</em>, or <em>"Robo light on kar"</em>!</p>
               </div>
             </div>
           </div>
 
           <!-- Quick Suggestion Chips -->
           <div class="px-4 py-2 border-t border-slate-800/60 bg-slate-900/50 flex flex-wrap gap-1.5 text-xs">
+            <button onclick="insertPrompt('Hello Robo, tum kaise ho?')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition">
+              👋 Hello Robo
+            </button>
+            <button onclick="insertPrompt('Tata Salt ka stock kitna hai?')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">
+              📦 Tata Salt Stock
+            </button>
+            <button onclick="insertPrompt('Usme se 5 bech diye')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition">
+              📉 Usme se 5 bech diye
+            </button>
+            <button onclick="insertPrompt('Robo light on kar')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-yellow-300 border border-slate-700 transition">
+              💡 Light ON
+            </button>
+            <button onclick="insertPrompt('Fan band kar')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition">
+              🌀 Fan OFF
+            </button>
+            <button onclick="insertPrompt('Robo, aaj kitni sale hui?')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">
+              💰 Aaj kitni sale hui?
+            </button>
+            <button onclick="insertPrompt('Robo, Amit ka bill bana do')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 transition">
+              🧾 Amit ka bill
+            </button>
+            <button onclick="insertPrompt('Do Tata Salt aur ek Surf Excel')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 transition">
+              🛒 2 Tata Salt + 1 Surf Excel
+            </button>
+            <button onclick="insertPrompt('Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition">
+              📲 Bill + WhatsApp
+            </button>
             <button onclick="insertPrompt('Remember that Ramesh gets 5% discount')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 transition">
               🎓 Teach: Ramesh 5% off
-            </button>
-            <button onclick="insertPrompt('Our store timing is 9am to 10pm')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">
-              🎓 Teach: Store timing
-            </button>
-            <button onclick="insertPrompt('omkar namse kon konse bill aaye hai aaj')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-              🔍 Bills for Omkar
-            </button>
-            <button onclick="insertPrompt('Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-              🧾 Bill + WhatsApp
-            </button>
-            <button onclick="insertPrompt('check the product build a list')" class="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-              📦 List Products
             </button>
           </div>
 
@@ -613,10 +642,18 @@
       } else {
         let extraBadge = '';
         if (meta?.rule_saved) {
-          extraBadge = `<span class="inline-block mt-2 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold"><i class="fa-solid fa-check"></i> Memorized to Brain DB</span>`;
+          extraBadge = `<span class="inline-block mt-2 mr-2 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold"><i class="fa-solid fa-check"></i> Memorized to Brain DB</span>`;
         } else if (meta?.tool_invoked) {
-          extraBadge = `<span class="inline-block mt-2 px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-mono"><i class="fa-solid fa-bolt"></i> Tool: ${meta.tool_invoked}</span>`;
+          extraBadge = `<span class="inline-block mt-2 mr-2 px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-mono"><i class="fa-solid fa-bolt"></i> Tool: ${meta.tool_invoked}</span>`;
         }
+
+        const audioSrc = meta?.audio_url || ('/api/v1/voice/audio/tts?text=' + encodeURIComponent(text) + '&lang=hi');
+        const audioBtn = `
+          <button onclick="playSpeech(this, '${encodeURIComponent(audioSrc)}')" class="inline-flex items-center space-x-1.5 px-2.5 py-1 mt-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700 transition">
+            <i class="fa-solid fa-volume-high text-indigo-400"></i>
+            <span>Speak</span>
+          </button>
+        `;
 
         html = `
           <div class="w-8 h-8 rounded-lg bg-indigo-600 flex-shrink-0 flex items-center justify-center mt-1">
@@ -624,13 +661,48 @@
           </div>
           <div class="chat-bubble-bot p-3.5 rounded-2xl rounded-tl-none max-w-lg text-sm text-slate-200 shadow-md">
             <div>${escapeHtml(text)}</div>
-            ${extraBadge}
+            <div class="flex flex-wrap items-center pt-1">
+              ${extraBadge}
+              ${audioBtn}
+            </div>
           </div>
         `;
       }
       div.innerHTML = html;
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
+
+      if (role !== 'user' && document.getElementById('autoSpeakCheckbox')?.checked) {
+        const audioSrc = meta?.audio_url || ('/api/v1/voice/audio/tts?text=' + encodeURIComponent(text) + '&lang=hi');
+        const btn = div.querySelector('button');
+        playSpeech(btn, encodeURIComponent(audioSrc));
+      }
+    }
+
+    let currentAudio = null;
+    function playSpeech(btn, encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      if (currentAudio) {
+        try { currentAudio.pause(); } catch(e){}
+        currentAudio = null;
+      }
+      const icon = btn ? btn.querySelector('i') : null;
+      if (icon) icon.className = 'fa-solid fa-spinner fa-spin text-indigo-400';
+
+      const audio = new Audio(url);
+      currentAudio = audio;
+      audio.onended = () => {
+        if (icon) icon.className = 'fa-solid fa-volume-high text-indigo-400';
+      };
+      audio.onerror = () => {
+        if (icon) icon.className = 'fa-solid fa-volume-xmark text-rose-400';
+      };
+      audio.play().then(() => {
+        if (icon) icon.className = 'fa-solid fa-volume-high text-emerald-400 animate-pulse';
+      }).catch(err => {
+        console.warn('Audio play error:', err);
+        if (icon) icon.className = 'fa-solid fa-volume-high text-indigo-400';
+      });
     }
 
     function appendLoadingBubble() {

@@ -13,8 +13,8 @@
 
 // --- Wi-Fi Credentials (CONFIGURE FOR YOUR NETWORK) ---
 // Note: ESP32 only supports 2.4 GHz Wi-Fi networks
-#define WIFI_SSID           "DIGISOL"
-#define WIFI_PASSWORD       "12345678"
+#define WIFI_SSID           "Airtel_yash_8260"
+#define WIFI_PASSWORD       "Kavni@143"
 
 // --- Central Brain Backend URL (Live Cloud Backend on Render) ---
 #define BACKEND_BASE_URL    "https://business-ai-robot-backend.onrender.com"

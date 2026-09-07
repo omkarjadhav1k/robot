@@ -101,4 +101,6 @@ class VoiceInteractResponse(BaseModel):
     business_data: Optional[Dict[str, Any]] = Field(default=None, description="Structured business data returned from PostgreSQL")
     latencies: Optional[Dict[str, float]] = Field(default=None, description="Stage latency breakdown in milliseconds")
     command_dispatched: Optional[RobotCommand] = None
+    audio_url: Optional[str] = Field(default=None, description="TTS Audio stream URL for robot speaker playback")
+
 

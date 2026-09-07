@@ -78,8 +78,10 @@ async def lifespan(app: FastAPI):
                 db.commit()
                 logger.info("Seeded %d store products into database.", len(seed_items))
 
-            # Ensure Tea & Sandwich exist even if database was previously seeded
+            # Ensure essential products exist and have realistic stock (Tata Salt: 37 packets, Surf Excel: 50 packets)
             for p_name, p_unit, p_price, p_stock in [
+                ("Tata Salt", "packet", Decimal("28.00"), Decimal("37.00")),
+                ("Surf Excel", "packet", Decimal("140.00"), Decimal("50.00")),
                 ("Tea", "cup", Decimal("20.00"), Decimal("100.00")),
                 ("Veg Sandwich", "pcs", Decimal("80.00"), Decimal("50.00")),
             ]:
@@ -97,18 +99,19 @@ async def lifespan(app: FastAPI):
                     ))
                     db.commit()
 
-            # Ensure sample customer Rahul exists with WhatsApp number
+            # Ensure sample customers Rahul & Amit exist with WhatsApp numbers
             from app.models.billing import Customer
-            rahul = db.query(Customer).filter(Customer.business_id == biz.id, Customer.name.ilike("Rahul")).first()
-            if not rahul:
-                db.add(Customer(
-                    business_id=biz.id,
-                    name="Rahul",
-                    phone="9876543210",
-                    outstanding_balance=Decimal("0.00"),
-                ))
-                db.commit()
-                logger.info("Seeded sample customer Rahul (9876543210)")
+            for c_name, c_phone in [("Rahul", "9876543210"), ("Amit", "9876543211")]:
+                existing_c = db.query(Customer).filter(Customer.business_id == biz.id, Customer.name.ilike(c_name)).first()
+                if not existing_c:
+                    db.add(Customer(
+                        business_id=biz.id,
+                        name=c_name,
+                        phone=c_phone,
+                        outstanding_balance=Decimal("0.00"),
+                    ))
+                    db.commit()
+                    logger.info("Seeded sample customer %s (%s)", c_name, c_phone)
     except Exception as e:
         logger.error(f"Failed to synchronize database tables on startup: {e}", exc_info=True)
 

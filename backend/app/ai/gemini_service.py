@@ -10,19 +10,35 @@ from app.config import get_settings
 logger = logging.getLogger("business_ai_robot.gemini")
 
 SYSTEM_INSTRUCTION = (
-    "You are Business AI Robot, an intelligent physical AI assistant and business manager running on "
-    "an ESP32 robot in a retail store.\n"
-    "CRITICAL RULES:\n"
-    "1. You NEVER guess, hallucinate, or invent inventory stock, product prices, customer balances, or bill totals.\n"
-    "2. You MUST use the provided function tools to query the database whenever the user asks about stock, bills, sales, customers, or to create a bill.\n"
-    "3. You MUST use hardware tools (control_relay, blink_led) when asked to switch or toggle appliances, lights, or relays.\n"
-    "4. When asked to add, register, or create a new product/sample product in the store/inventory, use the add_product tool.\n"
-    "5. When asked for all products, inventory list, stock count, or overview (e.g., 'check stock', 'check all products', 'build a list', 'how many items in stock', 'sagle kiti product aahe' in Marathi/Hindi/English), use the list_all_products tool.\n"
-    "6. You understand English, Hindi, and Marathi. When user speaks in Marathi or Hindi, understand and respond appropriately.\n"
-    "7. When asked who was billed today, which customers got bills, customer names for bills (e.g. 'kona konala bill dile', 'who received bills', 'today bills'), or bills for a SPECIFIC person (e.g. 'omkar namse kon konse bill aaye hai', 'sirf omkar name se chahiye', 'rahul ke kitne bill hai'), use get_todays_bills. ALWAYS pass customer_name parameter if the user asks for bills of a specific person or says 'sirf [name]'.\n"
-    "8. When asked to bill and WhatsApp (e.g. 'Rahul ka 2 chai aur 1 sandwich ka bill bana ke WhatsApp kar do', 'bill bana ke WhatsApp bhej do', 'WhatsApp kar do'), use create_bill with send_whatsapp=true. When asked to send an existing invoice on WhatsApp, use send_whatsapp_bill.\n"
-    "9. If the user provides a phone number after a WhatsApp send error or bill request (e.g. '+91 9699779276', '9699779276', 'Rahul ka number 9699779276 hai'), use send_whatsapp_bill with phone_number.\n"
-    "10. For general pleasantries or questions not involving store data, answer directly, concisely, and naturally in 1-2 sentences for speech/display."
+    "You are Business AI Robot, an intelligent, helpful, and friendly physical retail AI robot running in an Indian store.\n"
+    "You communicate naturally in a warm, polite, and conversational Hinglish/Hindi or English tone matching the user's language.\n"
+    "Keep spoken responses concise (1-2 natural sentences) so they sound crisp, warm, and natural when spoken aloud via the speaker.\n\n"
+    "CONVERSATIONAL PERSONALITY & TONE EXAMPLES:\n"
+    "- User: 'Hello Robo, tum kaise ho?'\n"
+    "  Robot: 'Hello! Main bilkul accha hoon 😄 Aap batao, main aapki kya help kar sakta hoon?'\n"
+    "- User: 'Robo, Tata Salt ka stock kitna hai?'\n"
+    "  Robot queries check_stock -> 'Tata Salt ke 37 packets available hain.'\n"
+    "- User: 'Usme se 5 bech diye.'\n"
+    "  Robot resolves context to Tata Salt, calls reduce_stock -> 'Okay, Tata Salt ka stock 5 packets kam kar diya. Ab 32 packets available hain.'\n"
+    "- User: 'Robo, aaj kitni sale hui?'\n"
+    "  Robot queries get_sales_today -> 'Aaj ki total sale ₹18,450 hai.'\n"
+    "- User: 'Robo, light on kar.'\n"
+    "  Robot calls control_relay(device='light', state='on') -> 'Done, light on kar di.'\n"
+    "- User: 'Fan band kar.'\n"
+    "  Robot calls control_relay(device='fan', state='off') -> 'Sure, fan band kar diya.'\n"
+    "- User: 'Robo, Amit ka bill bana do.' (without items)\n"
+    "  Robot asks naturally: 'Bilkul. Amit ke bill mein kaunse items add karne hain?'\n"
+    "- User: 'Do Tata Salt aur ek Surf Excel.' (following bill prompt)\n"
+    "  Robot creates bill for Amit and asks: 'Bill ₹196 ka bana diya hai. Kya main ise Amit ke WhatsApp par bhej doon?'\n\n"
+    "FALLBACKS & SAFETY RULES:\n"
+    "- If a query is not understood: 'Sorry, mujhe ye samajh nahi aaya. Aap stock, billing ya shop devices ke baare mein pooch sakte ho.'\n"
+    "- If product is not found: 'Mujhe [product] naam ka product inventory mein nahi mila. Product ka naam dobara bataoge?'\n"
+    "- If connection fails: 'Abhi inventory system se connection nahi ho raha. Thodi der baad try karo.'\n"
+    "- NEVER invent or hallucinate stock quantities, prices, or bill totals. ALWAYS call database tools.\n\n"
+    "SHORT-TERM CONTEXT & PRONOUN RESOLUTION:\n"
+    "When the user refers to 'usme se', 'isme se', 'uska', 'it', 'them', or says '5 bech diye', '10 aur add kar do' without repeating the product name, ALWAYS look at the previous turn in history to identify the referenced product and call reduce_stock or add_stock!\n\n"
+    "MULTI-TURN BILLING WORKFLOW:\n"
+    "When user says '[Customer] ka bill bana do', if items are missing, ask what items to add. When items are specified in the next turn, use the customer name from the previous turn to call create_bill. Then ask if they want it sent on WhatsApp. If they reply 'haan' or 'yes', use send_whatsapp_bill!"
 )
 
 FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"]
@@ -32,22 +48,75 @@ BUSINESS_TOOLS = [
     {
         "functionDeclarations": [
             {
-                "name": "get_stock",
-                "description": "Check current stock level, unit, and authoritative selling price of a SPECIFIC product in inventory (e.g., 'sugar', 'milk').",
+                "name": "check_stock",
+                "description": "Check current available stock level, unit, and authoritative price of a product in store inventory (e.g. 'Tata Salt kitna hai', 'stock of sugar', 'available stock', 'kitne packets bache hain').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "product_name": {
                             "type": "STRING",
-                            "description": "The name or search term of the product (e.g., 'sugar', 'rice', 'milk').",
+                            "description": "The name of the product to check (e.g. 'Tata Salt', 'Sugar', 'Milk', 'Tea').",
                         }
                     },
                     "required": ["product_name"],
                 },
             },
             {
+                "name": "reduce_stock",
+                "description": "Deduct, reduce, or record sale of product stock (e.g. 'Usme se 5 bech diye', '5 packets bech diye', 'reduce 2 kg sugar', 'sold 5'). Use conversation history if product name is referenced as 'usme se'.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "product_name": {
+                            "type": "STRING",
+                            "description": "Name of the product being sold or deducted (e.g. 'Tata Salt'). Inferred from context if not explicitly spoken.",
+                        },
+                        "quantity": {
+                            "type": "NUMBER",
+                            "description": "Quantity sold or deducted (e.g. 5).",
+                        },
+                    },
+                    "required": ["product_name", "quantity"],
+                },
+            },
+            {
+                "name": "add_stock",
+                "description": "Add, restock, or replenish quantity for a product in inventory (e.g. 'Tata Salt ke 10 packet aur aaye hain', 'add 10 stock to sugar').",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "product_name": {
+                            "type": "STRING",
+                            "description": "Name of the product to restock (e.g. 'Tata Salt').",
+                        },
+                        "quantity": {
+                            "type": "NUMBER",
+                            "description": "Quantity to add to inventory (e.g. 10).",
+                        },
+                        "unit": {
+                            "type": "STRING",
+                            "description": "Optional unit of measurement, e.g. 'packet', 'kg', 'pcs'.",
+                        },
+                    },
+                    "required": ["product_name", "quantity"],
+                },
+            },
+            {
+                "name": "get_sales_today",
+                "description": "Retrieve today's total store revenue, bill count, or sales given to a specific customer (e.g. 'aaj kitni sale hui', 'today's sales', 'today revenue', 'omkar ke bill').",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "customer_name": {
+                            "type": "STRING",
+                            "description": "Optional customer name to filter sales for that specific customer only (e.g. 'Omkar', 'Amit').",
+                        }
+                    },
+                },
+            },
+            {
                 "name": "list_all_products",
-                "description": "List all products in the shop/inventory, count total products, or get full stock overview (e.g. 'check all products', 'build a list', 'how many items in stock', 'check stock', 'sagle kiti product aahe').",
+                "description": "List all products in inventory, count total items, or provide stock overview (e.g. 'check all stock', 'list products', 'sagle kiti product aahe').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {},
@@ -55,34 +124,21 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "get_low_stock_items",
-                "description": "Get a list of products that are LOW on stock or below the minimum reorder threshold (e.g. 'what is low on stock', 'kam stock wale saman').",
+                "description": "Get products low on stock or below reorder threshold (e.g. 'what is low on stock', 'kam stock wale saman').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {},
                 },
             },
             {
-                "name": "get_todays_bills",
-                "description": "Retrieve today's verified bills, list of customers who were billed, total revenue, and bill amounts (e.g. 'who was billed today', 'kona konala bill dile', 'today bills', 'omkar namse bill', 'sirf omkar name se').",
+                "name": "get_customer",
+                "description": "Check customer outstanding credit balance, contact details, or customer directory (e.g. 'Ramesh balance', 'list customers').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "customer_name": {
                             "type": "STRING",
-                            "description": "Filter bills by customer name (e.g. 'Omkar', 'Rahul', 'Walk-in') if requested by user.",
-                        }
-                    },
-                },
-            },
-            {
-                "name": "get_customer_balance",
-                "description": "Check a customer's outstanding balance, or list registered customer names and credit status (e.g. 'check Ramesh balance', 'list customers', 'customer name').",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "customer_name": {
-                            "type": "STRING",
-                            "description": "The name or phone number of the customer (e.g. 'Ramesh', 'Suresh'), or 'all' to list registered customers.",
+                            "description": "Customer name (e.g. 'Ramesh', 'Amit') or 'all'.",
                         }
                     },
                     "required": ["customer_name"],
@@ -90,13 +146,13 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "create_bill",
-                "description": "Initiate creation of a sales bill with line items and customer information, optionally sending it on WhatsApp.",
+                "description": "Create a customer sales bill with products, quantities, and prices, optionally sending it on WhatsApp.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "customer_name": {
                             "type": "STRING",
-                            "description": "Customer name if known (optional).",
+                            "description": "Customer name if known (e.g. 'Amit', 'Rahul', 'Omkar').",
                         },
                         "items": {
                             "type": "ARRAY",
@@ -104,7 +160,7 @@ BUSINESS_TOOLS = [
                             "items": {
                                 "type": "OBJECT",
                                 "properties": {
-                                    "name": {"type": "STRING", "description": "Product name (e.g. 'tea', 'sandwich')"},
+                                    "name": {"type": "STRING", "description": "Product name (e.g. 'Tata Salt', 'Surf Excel', 'Tea')"},
                                     "quantity": {"type": "NUMBER", "description": "Quantity purchased (e.g. 2)"},
                                 },
                                 "required": ["name", "quantity"],
@@ -116,7 +172,7 @@ BUSINESS_TOOLS = [
                         },
                         "send_whatsapp": {
                             "type": "BOOLEAN",
-                            "description": "Set to true if user requested to WhatsApp or send the bill to the customer (e.g. 'WhatsApp kar do', 'WhatsApp pe bhej do').",
+                            "description": "True if user explicitly wants the bill sent to customer WhatsApp.",
                         },
                     },
                     "required": ["items"],
@@ -124,20 +180,45 @@ BUSINESS_TOOLS = [
             },
             {
                 "name": "control_relay",
-                "description": "Switch an electrical relay or connected appliance (light, fan, socket) on or off.",
+                "description": "Switch physical shop appliances (light, fan, socket, etc.) or electrical relay channels on or off (e.g. 'light on kar', 'fan band kar', 'turn off relay 1').",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
+                        "device": {
+                            "type": "STRING",
+                            "description": "Device name: 'light', 'fan', 'socket', 'aux', or 'all'.",
+                        },
                         "relay_number": {
                             "type": "INTEGER",
-                            "description": "Relay channel number (1 to 4).",
+                            "description": "Relay channel number (1 to 4) if device is not specified.",
                         },
                         "state": {
                             "type": "STRING",
                             "description": "Desired state: 'on' or 'off'.",
                         },
                     },
-                    "required": ["relay_number", "state"],
+                    "required": ["state"],
+                },
+            },
+            {
+                "name": "send_whatsapp_bill",
+                "description": "Send a bill or invoice to customer on WhatsApp (e.g. 'Amit ka bill WhatsApp par bhej do', 'send bill on WhatsApp').",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "invoice_id": {
+                            "type": "STRING",
+                            "description": "Invoice number or 'latest' for last generated bill.",
+                        },
+                        "customer_name": {
+                            "type": "STRING",
+                            "description": "Customer name (e.g. 'Amit', 'Rahul').",
+                        },
+                        "phone_number": {
+                            "type": "STRING",
+                            "description": "WhatsApp phone number if provided by user.",
+                        },
+                    },
                 },
             },
             {
@@ -150,61 +231,6 @@ BUSINESS_TOOLS = [
                             "type": "INTEGER",
                             "description": "Number of blinks (1 to 10). Default 3.",
                         }
-                    },
-                },
-            },
-            {
-                "name": "get_business_summary",
-                "description": "Get high level store performance metrics (today's revenue, low stock count, credit due).",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {},
-                },
-            },
-            {
-                "name": "add_product",
-                "description": "Add a new product to inventory or update its stock and price.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "name": {
-                            "type": "STRING",
-                            "description": "Name of the product (e.g. 'Eggs', 'Brown Bread', 'Soap', 'Sample Product').",
-                        },
-                        "unit": {
-                            "type": "STRING",
-                            "description": "Unit of measurement, e.g. 'kg', 'pcs', 'ltr', 'packet'. Defaults to 'pcs'.",
-                        },
-                        "selling_price": {
-                            "type": "NUMBER",
-                            "description": "Authoritative selling price per unit in rupees.",
-                        },
-                        "stock": {
-                            "type": "NUMBER",
-                            "description": "Initial stock quantity. Defaults to 10 if not specified.",
-                        },
-                    },
-                    "required": ["name", "selling_price"],
-                },
-            },
-            {
-                "name": "send_whatsapp_bill",
-                "description": "Send an existing bill or invoice to a customer on WhatsApp.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "invoice_id": {
-                            "type": "STRING",
-                            "description": "Invoice number (e.g. 'INV-1025') or 'latest' for the last bill generated.",
-                        },
-                        "customer_name": {
-                            "type": "STRING",
-                            "description": "Customer name (e.g. 'Rahul', 'Omkar') if known.",
-                        },
-                        "phone_number": {
-                            "type": "STRING",
-                            "description": "WhatsApp phone number if explicitly provided by user.",
-                        },
                     },
                 },
             },

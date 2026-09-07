@@ -337,7 +337,7 @@ async def process_voice_interaction(
         args = gemini_res.function_call.get("args", {})
         logger.info("Handling tool call: %s with args: %s", fn_name, args)
 
-        if fn_name == "get_stock":
+        if fn_name in ("check_stock", "get_stock"):
             product_name = args.get("product_name", "").strip()
             # If user asks for generic stock / all products, gracefully redirect to list_all_products
             if not product_name or product_name.lower() in (
@@ -350,22 +350,55 @@ async def process_voice_interaction(
                 if products:
                     summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in products[:5]])
                     more = f" and {len(products) - 5} more" if len(products) > 5 else ""
-                    response_text = f"We have {len(products)} products in stock: {summary}{more}."
+                    response_text = f"Dukan mein {len(products)} products available hain: {summary}{more}."
                 else:
-                    response_text = "There are currently no products in store inventory."
+                    response_text = "Dukan mein abhi koi product stock mein nahi hai."
             else:
                 stock_info = InventoryService.get_stock(db, product_name, session.business_id)
                 business_data = stock_info
                 action_type = "business_query"
                 if stock_info.get("found"):
-                    response_text = (
-                        f"{stock_info['name']} has {stock_info['current_stock']:.1f} {stock_info['unit']} in stock "
-                        f"at ₹{stock_info['selling_price']:.2f} per {stock_info['unit']}."
-                    )
+                    stk = stock_info['current_stock']
+                    stk_str = str(int(stk)) if stk % 1 == 0 else f"{stk:.1f}"
+                    response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
                     if stock_info.get("is_low_stock"):
-                        response_text += " Note: stock is running low!"
+                        response_text += " Dhyaan rahe, stock kam ho raha hai!"
                 else:
-                    response_text = f"Sorry, '{product_name}' was not found in inventory."
+                    response_text = f"Mujhe '{product_name}' naam ka product inventory mein nahi mila. Product ka naam dobara bataoge?"
+
+        elif fn_name == "reduce_stock":
+            product_name = args.get("product_name", "").strip()
+            try:
+                qty = float(args.get("quantity", 1.0))
+            except Exception:
+                qty = 1.0
+            res = InventoryService.reduce_or_sell_stock(
+                db=db,
+                product_name=product_name,
+                quantity=qty,
+                business_id=session.business_id,
+            )
+            business_data = res
+            action_type = "business_query"
+            response_text = res["message"]
+
+        elif fn_name == "add_stock":
+            product_name = args.get("product_name", "").strip()
+            try:
+                qty = float(args.get("quantity", 1.0))
+            except Exception:
+                qty = 1.0
+            unit = args.get("unit")
+            res = InventoryService.add_or_restock_product(
+                db=db,
+                product_name=product_name,
+                quantity=qty,
+                unit=unit,
+                business_id=session.business_id,
+            )
+            business_data = res
+            action_type = "business_query"
+            response_text = res["message"]
 
         elif fn_name in ("list_all_products", "get_all_products", "list_inventory"):
             products = InventoryService.list_all_products(db, session.business_id, limit=30)
@@ -388,7 +421,7 @@ async def process_voice_interaction(
             else:
                 response_text = "All products currently meet minimum inventory levels."
 
-        elif fn_name == "get_todays_bills":
+        elif fn_name in ("get_sales_today", "get_todays_bills"):
             cust_filter = (args.get("customer_name") or "").strip()
             if cust_filter.lower() in ("all", "everyone", "sab", "sagle", "list", "customer name", "none", "null"):
                 cust_filter = ""
@@ -405,28 +438,18 @@ async def process_voice_interaction(
 
             if total_b == 0:
                 if cust_filter:
-                    response_text = f"No bills were found for customer '{cust_filter}' today."
+                    response_text = f"Aaj customer '{cust_filter}' ka koi bill nahi mila."
                 else:
-                    response_text = "No bills have been generated today."
+                    response_text = "Aaj abhi tak koi bill generate nahi hua hai."
             else:
                 if cust_filter:
                     b_list = [f"{b.get('bill_number')} (₹{b.get('total_amount', 0.0):.2f})" for b in recent_b[:5]]
-                    more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
-                    response_text = (
-                        f"Today for customer '{cust_filter}', {total_b} bill{'s were' if total_b > 1 else ' was'} "
-                        f"found totaling ₹{total_rev:.2f}: {', '.join(b_list)}{more_suffix}."
-                    )
+                    more_suffix = f" aur {len(recent_b) - 5} bills" if len(recent_b) > 5 else ""
+                    response_text = f"Aaj {cust_filter} ke {total_b} bill totaling ₹{total_rev:,.2f} hue hain: {', '.join(b_list)}{more_suffix}."
                 else:
-                    cust_details = []
-                    for b in recent_b[:5]:
-                        c_name = b.get("customer_name") or "Walk-in Customer"
-                        amt = b.get("total_amount", 0.0)
-                        cust_details.append(f"{c_name} (₹{amt:.2f})")
-                    cust_str = ", ".join(cust_details)
-                    more_suffix = f" and {len(recent_b) - 5} more" if len(recent_b) > 5 else ""
-                    response_text = f"Today {total_b} bills were given totaling ₹{total_rev:.2f} to: {cust_str}{more_suffix}."
+                    response_text = f"Aaj ki total sale ₹{total_rev:,.2f} hai."
 
-        elif fn_name == "get_customer_balance":
+        elif fn_name in ("get_customer", "get_customer_balance"):
             cust_name = args.get("customer_name", "").strip()
             # If user asks for general customer names or customer list
             if not cust_name or cust_name.lower() in (
@@ -672,8 +695,30 @@ async def process_voice_interaction(
                 response_text = "Please specify a valid product name and price to add it to inventory."
 
         elif fn_name == "control_relay":
-            relay_num = args.get("relay_number", 1)
-            state = args.get("state", "off").lower()
+            dev = str(args.get("device", "")).lower().strip()
+            raw_relay = args.get("relay_number")
+            raw_state = str(args.get("state", "on")).lower().strip()
+            state = "on" if raw_state in ("on", "1", "true", "chalu", "shuru", "lagao") else "off"
+
+            # Map device name to relay channel if relay_number was not given
+            if raw_relay is not None and str(raw_relay).isdigit() and 1 <= int(raw_relay) <= 4:
+                relay_num = int(raw_relay)
+                if not dev:
+                    dev = "light" if relay_num == 1 else ("fan" if relay_num == 2 else ("socket" if relay_num == 3 else "aux device"))
+            else:
+                if any(w in dev for w in ("fan", "pankha", "cooler")):
+                    relay_num = 2
+                    dev = "fan"
+                elif any(w in dev for w in ("socket", "plug", "charger")):
+                    relay_num = 3
+                    dev = "socket"
+                elif any(w in dev for w in ("aux", "extra", "relay 4")):
+                    relay_num = 4
+                    dev = "aux device"
+                else:
+                    relay_num = 1
+                    dev = "light"
+
             db_cmd = RobotService.queue_command(
                 db=db,
                 robot_id=robot_id,
@@ -687,7 +732,10 @@ async def process_voice_interaction(
                 params={"relay": relay_num, "state": state},
                 status="pending",
             )
-            response_text = f"Turning relay {relay_num} {state}."
+            if state == "on":
+                response_text = f"Done, {dev} on kar di."
+            else:
+                response_text = f"Sure, {dev} band kar diya."
             action_type = "hardware_action"
 
         elif fn_name == "blink_led":
@@ -742,6 +790,10 @@ async def process_voice_interaction(
     db.add(activity)
     db.commit()
 
+    import urllib.parse
+    clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", response_text).strip()
+    audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or response_text)}&lang=hi"
+
     return VoiceInteractResponse(
         response_text=response_text,
         action_type=action_type,
@@ -750,6 +802,7 @@ async def process_voice_interaction(
         state=session.state.value,
         business_data=business_data,
         command_dispatched=command_dispatched,
+        audio_url=audio_url,
         latencies={
             "ai_ms": round(ai_duration, 2),
             "total_ms": round(total_time, 2),
@@ -757,21 +810,21 @@ async def process_voice_interaction(
     )
 
 
-@router.post("/audio/transcribe", summary="Transcribe speech audio with Groq Whisper")
+@router.post("/audio/transcribe", summary="Transcribe speech audio with Groq Whisper & Gemini Multimodal")
 async def transcribe_audio_endpoint(file: UploadFile = File(...)):
-    """Transcribe uploaded voice audio bytes using Groq Whisper-large-v3."""
-    from app.ai.speech_service import transcribe_with_groq
+    """Transcribe uploaded voice audio bytes using Groq Whisper or Gemini Multimodal audio."""
+    from app.ai.speech_service import transcribe_speech
     audio_bytes = await file.read()
-    transcribed_text = await transcribe_with_groq(audio_bytes, file.filename or "audio.wav")
+    transcribed_text = await transcribe_speech(audio_bytes, file.filename or "audio.wav")
     return {"text": transcribed_text}
 
 
-@router.get("/audio/tts", summary="Synthesize speech with Edge TTS")
-async def tts_endpoint(text: str, lang: str = "en"):
-    """Synthesize high-quality speech MP3 using Microsoft Edge Neural TTS."""
+@router.get("/audio/tts", summary="Synthesize speech with Edge Neural & Google TTS")
+async def tts_endpoint(text: str, lang: str = "hi"):
+    """Synthesize natural Indian speech audio using Edge Neural TTS with Google TTS fallback."""
     from fastapi.responses import Response
-    from app.ai.speech_service import synthesize_with_edge_tts
-    audio_data = await synthesize_with_edge_tts(text, language=lang)
+    from app.ai.speech_service import synthesize_speech
+    audio_data = await synthesize_speech(text, language=lang)
     if not audio_data:
-        raise HTTPException(status_code=500, detail="TTS synthesis failed or package unavailable")
+        raise HTTPException(status_code=500, detail="TTS synthesis failed")
     return Response(content=audio_data, media_type="audio/mpeg")

@@ -321,3 +321,127 @@ class InventoryService:
             "unit": new_prod.unit,
             "message": f"Added new product '{new_prod.name}' with stock {float(new_prod.current_stock)} {new_prod.unit} at ₹{float(new_prod.selling_price):.2f}.",
         }
+
+    @staticmethod
+    def reduce_or_sell_stock(
+        db: Session,
+        product_name: str,
+        quantity: float,
+        notes: Optional[str] = None,
+        business_id: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Atomically deduct stock for a product, recording a SALE transaction audit."""
+        clean_name = product_name.strip()
+        if not clean_name:
+            raise ValueError("Product name cannot be empty.")
+
+        product = InventoryService.search_product(db, clean_name, business_id)
+        if not product:
+            return {
+                "success": False,
+                "found": False,
+                "product_name": clean_name,
+                "message": f"Mujhe '{clean_name}' naam ka product inventory mein nahi mila. Product ka naam dobara bataoge?",
+            }
+
+        dec_qty = Decimal(str(quantity))
+        if dec_qty <= Decimal("0"):
+            return {
+                "success": False,
+                "found": True,
+                "product_name": product.name,
+                "message": "Quantity to reduce must be greater than zero.",
+            }
+
+        stock_before = product.current_stock
+        stock_after = max(Decimal("0.00"), stock_before - dec_qty)
+        product.current_stock = stock_after
+
+        txn = InventoryTransaction(
+            business_id=product.business_id,
+            product_id=product.id,
+            transaction_type=TransactionType.SALE,
+            quantity=dec_qty,
+            stock_before=stock_before,
+            stock_after=stock_after,
+            reference_id="VOICE_SALE",
+            notes=notes or f"Stock sold / reduced by {float(dec_qty)} {product.unit} via voice/chat",
+        )
+        db.add(txn)
+        db.commit()
+        db.refresh(product)
+        logger.info("Stock reduced for %s: %s -> %s (sold %s)", product.name, stock_before, stock_after, dec_qty)
+
+        return {
+            "success": True,
+            "found": True,
+            "product_id": str(product.id),
+            "product_name": product.name,
+            "quantity_reduced": float(dec_qty),
+            "stock_before": float(stock_before),
+            "new_stock": float(stock_after),
+            "unit": product.unit,
+            "message": f"Okay, {product.name} ka stock {int(dec_qty) if dec_qty % 1 == 0 else float(dec_qty)} {product.unit} kam kar diya. Ab {int(stock_after) if stock_after % 1 == 0 else float(stock_after)} {product.unit} available hain.",
+        }
+
+    @staticmethod
+    def add_or_restock_product(
+        db: Session,
+        product_name: str,
+        quantity: float,
+        unit: Optional[str] = None,
+        business_id: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Atomically add stock for an existing product or register new with added stock."""
+        clean_name = product_name.strip()
+        if not clean_name:
+            raise ValueError("Product name cannot be empty.")
+
+        product = InventoryService.search_product(db, clean_name, business_id)
+        dec_qty = Decimal(str(quantity))
+
+        if product:
+            stock_before = product.current_stock
+            product.current_stock += dec_qty
+            txn = InventoryTransaction(
+                business_id=product.business_id,
+                product_id=product.id,
+                transaction_type=TransactionType.STOCK_IN,
+                quantity=dec_qty,
+                stock_before=stock_before,
+                stock_after=product.current_stock,
+                reference_id="VOICE_RESTOCK",
+                notes=f"Restocked {float(dec_qty)} {product.unit} via voice/chat",
+            )
+            db.add(txn)
+            db.commit()
+            db.refresh(product)
+            return {
+                "success": True,
+                "found": True,
+                "product_id": str(product.id),
+                "product_name": product.name,
+                "quantity_added": float(dec_qty),
+                "new_stock": float(product.current_stock),
+                "unit": product.unit,
+                "message": f"{product.name} mein {int(dec_qty) if dec_qty % 1 == 0 else float(dec_qty)} {product.unit} add kar diye. Ab total {int(product.current_stock) if product.current_stock % 1 == 0 else float(product.current_stock)} {product.unit} available hain.",
+            }
+        else:
+            # Add new product
+            res = InventoryService.add_or_update_product(
+                db=db,
+                name=clean_name,
+                unit=unit or "packet",
+                stock=float(dec_qty),
+                business_id=business_id,
+            )
+            return {
+                "success": True,
+                "found": False,
+                "product_id": res["id"],
+                "product_name": res["name"],
+                "quantity_added": float(dec_qty),
+                "new_stock": float(dec_qty),
+                "unit": res.get("unit", "packet"),
+                "message": f"Naya product '{res['name']}' register kiya aur {float(dec_qty)} {res.get('unit', 'packet')} stock add kar diya.",
+            }

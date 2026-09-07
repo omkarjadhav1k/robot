@@ -185,12 +185,15 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
             business_id=biz_id,
         )
         duration = round((time.perf_counter() - t_start) * 1000, 2)
+        resp_text = f"✅ Memorized to Brain Database: '{item.instruction}' (Category: {item.category})"
+        import urllib.parse
         return {
-            "response_text": f"✅ Memorized to Brain Database: '{item.instruction}' (Category: {item.category})",
+            "response_text": resp_text,
             "rule_saved": True,
             "rule_category": item.category,
             "tool_invoked": None,
             "action_type": "brain_learning",
+            "audio_url": f"/api/v1/voice/audio/tts?text={urllib.parse.quote(resp_text)}&lang=hi",
             "latencies": {"total_ms": duration},
         }
 
@@ -198,12 +201,15 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
     learned = BrainService.detect_and_learn_rule(db, msg, source="CHAT_TEACH", business_id=biz_id)
     if learned:
         duration = round((time.perf_counter() - t_start) * 1000, 2)
+        resp_text = f"I have memorized this {learned.category.lower()} rule: '{learned.instruction}'. It will now be actively enforced across all robot interactions."
+        import urllib.parse
         return {
-            "response_text": f"I have memorized this {learned.category.lower()} rule: '{learned.instruction}'. It will now be actively enforced across all robot interactions.",
+            "response_text": resp_text,
             "rule_saved": True,
             "rule_category": learned.category,
             "tool_invoked": None,
             "action_type": "brain_learning",
+            "audio_url": f"/api/v1/voice/audio/tts?text={urllib.parse.quote(resp_text)}&lang=hi",
             "latencies": {"total_ms": duration},
         }
 
@@ -224,22 +230,40 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
         args = gemini_res.function_call.get("args", {})
         logger.info("Admin Chat Gemini tool invocation: %s (%s)", tool_name, args)
 
-        if tool_name == "get_stock":
+        if tool_name in ("check_stock", "get_stock"):
             p_name = args.get("product_name", "")
-            stock_info = InventoryService.get_product_stock(db, p_name, biz_id)
+            stock_info = InventoryService.get_stock(db, p_name, biz_id)
             if stock_info.get("found"):
-                response_text = f"{stock_info['name']} has {stock_info['current_stock']:.1f} {stock_info['unit']} in stock at ₹{stock_info['selling_price']:.2f}."
+                stk = stock_info['current_stock']
+                stk_str = str(int(stk)) if stk % 1 == 0 else f"{stk:.1f}"
+                response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
             else:
-                response_text = f"Product '{p_name}' not found in inventory."
+                response_text = f"Mujhe '{p_name}' naam ka product inventory mein nahi mila. Product ka naam dobara bataoge?"
             action_type = "business_query"
 
-        elif tool_name == "list_all_products":
-            prods = InventoryService.list_all_products(db, biz_id, limit=20)
-            summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in prods[:5]])
-            response_text = f"Inventory has {len(prods)} products: {summary}."
+        elif tool_name == "reduce_stock":
+            p_name = args.get("product_name", "").strip()
+            try:
+                qty = float(args.get("quantity", 1.0))
+            except Exception:
+                qty = 1.0
+            res = InventoryService.reduce_or_sell_stock(db=db, product_name=p_name, quantity=qty, business_id=biz_id)
+            response_text = res["message"]
+            business_data = res
             action_type = "business_query"
 
-        elif tool_name == "get_todays_bills":
+        elif tool_name == "add_stock":
+            p_name = args.get("product_name", "").strip()
+            try:
+                qty = float(args.get("quantity", 1.0))
+            except Exception:
+                qty = 1.0
+            res = InventoryService.add_or_restock_product(db=db, product_name=p_name, quantity=qty, unit=args.get("unit"), business_id=biz_id)
+            response_text = res["message"]
+            business_data = res
+            action_type = "business_query"
+
+        elif tool_name in ("get_sales_today", "get_todays_bills"):
             cust_filter = args.get("customer_name")
             bills_info = BillingService.get_todays_bills(db, biz_id, customer_name=cust_filter)
             total_b = bills_info.get("total_bills", 0)
@@ -248,8 +272,27 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
             if total_b == 0:
                 response_text = f"No bills found{' for ' + cust_filter if cust_filter else ''} today."
             else:
-                b_list = [f"{b['bill_number']} (₹{b['total_amount']:.2f})" for b in recent_b[:5]]
-                response_text = f"Found {total_b} bill{'s' if total_b > 1 else ''} totaling ₹{total_rev:.2f}: {', '.join(b_list)}."
+                if cust_filter:
+                    b_list = [f"{b['bill_number']} (₹{b['total_amount']:.2f})" for b in recent_b[:5]]
+                    response_text = f"Found {total_b} bill{'s' if total_b > 1 else ''} totaling ₹{total_rev:.2f}: {', '.join(b_list)}."
+                else:
+                    response_text = f"Aaj ki total sale ₹{total_rev:,.2f} hai ({total_b} bills se)."
+            action_type = "business_query"
+
+        elif tool_name == "control_relay":
+            dev = str(args.get("device", "light")).lower().strip()
+            raw_state = str(args.get("state", "on")).lower().strip()
+            state = "on" if raw_state in ("on", "1", "true") else "off"
+            if state == "on":
+                response_text = f"Done, {dev} on kar di."
+            else:
+                response_text = f"Sure, {dev} band kar diya."
+            action_type = "hardware_action"
+
+        elif tool_name == "list_all_products":
+            prods = InventoryService.list_all_products(db, biz_id, limit=20)
+            summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in prods[:5]])
+            response_text = f"Inventory has {len(prods)} products: {summary}."
             action_type = "business_query"
 
         elif tool_name == "create_bill":
@@ -302,11 +345,15 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
         response_text = gemini_res.text or "I am ready. How can I help your store today?"
 
     duration = round((time.perf_counter() - t_start) * 1000, 2)
+    import urllib.parse
+    clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", response_text).strip()
+    audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or response_text)}&lang=hi"
     return {
         "response_text": response_text,
         "rule_saved": False,
         "tool_invoked": tool_name,
         "action_type": action_type,
         "business_data": business_data,
+        "audio_url": audio_url,
         "latencies": {"total_ms": duration},
     }

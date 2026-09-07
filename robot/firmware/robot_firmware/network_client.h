@@ -308,6 +308,12 @@ public:
                 _conversationId = returnedConvId;
             }
 
+            // Extract TTS audio stream URL
+            String audioUrl = _extractJsonString(respBody, "audio_url");
+            if (audioUrl.length() > 0) {
+                Serial.printf("🔊 [SPEAKER AUDIO READY]: %s%s\n", BACKEND_BASE_URL, audioUrl.c_str());
+            }
+
             Serial.println();
             Serial.print(F("🤖 [GEMINI AI]: "));
             Serial.println(aiResponse);
