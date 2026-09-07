@@ -134,3 +134,99 @@ class CustomerService:
             }
             for c in customers
         ]
+
+    @staticmethod
+    def get_customer_ledger(
+        db: Session,
+        customer_name: str,
+        business_id: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch chronological ledger of all bills and payments for a customer,
+        calculating running balances, total billed, total paid, remaining balance,
+        and generating a natural manager summary string in Hinglish.
+        """
+        customer = CustomerService.search_customer(db, customer_name, business_id=business_id)
+        if not customer:
+            return {
+                "found": False,
+                "query": customer_name,
+                "message": f"Customer '{customer_name}' was not found in records.",
+                "summary": f"Customer '{customer_name}' records mein nahi mila.",
+            }
+
+        from app.models.billing import Bill, Payment
+
+        bills = (
+            db.query(Bill)
+            .filter(Bill.customer_id == customer.id)
+            .order_by(Bill.created_at.asc())
+            .all()
+        )
+        payments = (
+            db.query(Payment)
+            .filter(Payment.customer_id == customer.id)
+            .order_by(Payment.created_at.asc())
+            .all()
+        )
+
+        entries = []
+        for b in bills:
+            entries.append({
+                "type": "INVOICE",
+                "timestamp": b.created_at.isoformat(),
+                "bill_number": b.bill_number,
+                "amount": float(b.total_amount),
+                "status": b.payment_status.value,
+                "details": f"Invoice {b.bill_number}",
+            })
+
+        for p in payments:
+            method_str = p.payment_method.value if hasattr(p.payment_method, "value") else str(p.payment_method)
+            entries.append({
+                "type": "PAYMENT",
+                "timestamp": p.created_at.isoformat(),
+                "bill_number": p.bill.bill_number if p.bill else None,
+                "amount": float(p.amount),
+                "payment_method": method_str,
+                "status": "COMPLETED",
+                "details": p.notes or f"Payment via {method_str}",
+            })
+
+        entries.sort(key=lambda x: x["timestamp"])
+
+        total_billed = sum(Decimal(str(b.total_amount)) for b in bills)
+        total_paid = sum(Decimal(str(p.amount)) for p in payments)
+        balance = Decimal(str(customer.outstanding_balance))
+
+        last_pay = payments[-1] if payments else None
+        last_pay_info = None
+        if last_pay:
+            method_str = last_pay.payment_method.value if hasattr(last_pay.payment_method, "value") else str(last_pay.payment_method)
+            last_pay_info = {
+                "amount": float(last_pay.amount),
+                "method": method_str,
+                "date": last_pay.created_at.strftime("%d %b %Y"),
+            }
+
+        if not bills and not payments:
+            summary = f"{customer.name} ka koi transaction history nahi hai. Current balance ₹0 hai."
+        else:
+            summary = f"{customer.name} ke total {len(bills)} bills ₹{total_billed:.2f} ke hain, ₹{total_paid:.2f} pay kiye hain, ₹{balance:.2f} abhi baki hain."
+            if last_pay:
+                method_str = last_pay.payment_method.value if hasattr(last_pay.payment_method, "value") else str(last_pay.payment_method)
+                summary += f" Last payment ₹{last_pay.amount:.2f} {last_pay.created_at.strftime('%d %b')} ko {method_str} se mili thi."
+
+        return {
+            "found": True,
+            "customer_id": str(customer.id),
+            "name": customer.name,
+            "phone": customer.phone,
+            "total_bills_count": len(bills),
+            "total_billed": float(total_billed),
+            "total_paid": float(total_paid),
+            "outstanding_balance": float(balance),
+            "last_payment": last_pay_info,
+            "summary": summary,
+            "entries": entries,
+        }

@@ -4,25 +4,31 @@
 #include <Arduino.h>
 
 // ==============================================================================
-// 🤖 Business AI Robot — ESP32 Firmware Configuration
+// 🤖 MAX — Manager AI eXecutive — ESP32 Firmware Configuration
 // ==============================================================================
 
 // --- Robot Identity ---
 #define ROBOT_ID            "ROBOT-001"
-#define FIRMWARE_VERSION    "0.1.0"
+#define FIRMWARE_VERSION    "1.0.0"
 
 // --- Wi-Fi Credentials (CONFIGURE FOR YOUR NETWORK) ---
 // Note: ESP32 only supports 2.4 GHz Wi-Fi networks
-#define WIFI_SSID           "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD       "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID           "Airtel_yash_8260"
+#define WIFI_PASSWORD       "Kavni@143"
 
 // --- Central Brain Backend URL (Live Cloud Backend on Render) ---
 #define BACKEND_BASE_URL    "https://business-ai-robot-backend.onrender.com"
 
 // --- Timing & Intervals ---
-#define HEARTBEAT_INTERVAL_MS   3000   // Send heartbeat & poll commands every 3s
+#define HEARTBEAT_INTERVAL_MS   6000   // Send heartbeat & poll commands every 6s
 #define WIFI_RETRY_INTERVAL_MS  5000   // Check Wi-Fi every 5s if disconnected
 #define SERIAL_BAUD_RATE        115200
+
+// --- HTTP Timeouts (milliseconds) ---
+#define HTTP_TIMEOUT_HEARTBEAT  10000  // 10s for heartbeat POST
+#define HTTP_TIMEOUT_COMMAND    10000  // 10s for command polling
+#define HTTP_TIMEOUT_CHAT       60000  // 60s for voice/chat (Render cold start + Gemini reasoning)
+#define HTTP_TIMEOUT_ACK        10000  // 10s for command ACK
 
 // --- Hardware Abstraction & Virtual Emulation Modes ---
 // Set to TRUE while waiting for physical parcels to arrive.

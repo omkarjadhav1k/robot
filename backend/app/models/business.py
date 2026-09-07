@@ -29,3 +29,7 @@ class Business(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     notifications = relationship("Notification", back_populates="business", cascade="all, delete-orphan")
     instructions = relationship("BusinessInstruction", back_populates="business", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="business", cascade="all, delete-orphan")
+    ai_memories = relationship("AIMemory", back_populates="business", cascade="all, delete-orphan")
+    ai_tasks = relationship("AITask", back_populates="business", cascade="all, delete-orphan")
+    owner_security = relationship("OwnerSecurity", back_populates="business", uselist=False, cascade="all, delete-orphan")
+    security_events = relationship("SecurityEvent", back_populates="business", cascade="all, delete-orphan")

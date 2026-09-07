@@ -12,16 +12,23 @@ settings = get_settings()
 
 db_url = settings.DATABASE_URL
 
-# Handle dialect-specific connection arguments
 connect_args = {}
 if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 
-engine = create_engine(
-    db_url,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+engine_kwargs = {
+    "connect_args": connect_args,
+    "pool_pre_ping": True,
+}
+if not db_url.startswith("sqlite"):
+    engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 300,
+        "pool_timeout": 10,
+    })
+
+engine = create_engine(db_url, **engine_kwargs)
 
 SessionLocal = sessionmaker(
     autocommit=False,

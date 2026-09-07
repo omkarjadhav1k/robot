@@ -219,6 +219,151 @@ class BillingService:
             logger.error("Failed to create bill, transaction rolled back: %s", str(e), exc_info=True)
             raise
 
+    @classmethod
+    def record_payment(
+        cls,
+        db: Session,
+        customer_name: str,
+        amount: float,
+        payment_method: str = "CASH",
+        bill_number: Optional[str] = None,
+        bill_id: Optional[Any] = None,
+        notes: Optional[str] = None,
+        business_id: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Record a customer payment (full or partial) and update bill & customer ledger.
+        - Supports partial payment: bill status becomes PARTIAL until remaining due is 0.
+        - Updates customer.outstanding_balance.
+        - Strictly prevents overpayment beyond due balance.
+        """
+        amount_dec = Decimal(str(round(amount, 2))).quantize(Decimal("0.01"))
+        if amount_dec <= Decimal("0.00"):
+            raise ValueError(f"Payment amount must be positive, got ₹{amount_dec}")
+
+        customer = CustomerService.search_customer(db, customer_name, business_id=business_id)
+        if not customer:
+            raise ValueError(f"Customer '{customer_name}' not found.")
+
+        # Check overpayment against customer outstanding balance
+        if amount_dec > customer.outstanding_balance:
+            raise ValueError(
+                f"Overpayment rejected: Total due is ₹{customer.outstanding_balance:.2f}, but received ₹{amount_dec:.2f}."
+            )
+
+        pay_method_enum = PaymentMethod.CASH
+        try:
+            pay_method_enum = PaymentMethod(payment_method.upper())
+        except Exception:
+            pay_method_enum = PaymentMethod.CASH
+
+        target_bill: Optional[Bill] = None
+        if bill_id:
+            target_bill = db.query(Bill).filter(Bill.id == bill_id).first()
+        elif bill_number:
+            target_bill = db.query(Bill).filter(Bill.bill_number.ilike(bill_number.strip())).first()
+
+        # If specific bill targeted, validate against that bill's balance
+        if target_bill:
+            existing_paid = db.query(func.coalesce(func.sum(Payment.amount), Decimal("0.00"))).filter(
+                Payment.bill_id == target_bill.id
+            ).scalar()
+            remaining_bill_due = (target_bill.total_amount - existing_paid).quantize(Decimal("0.01"))
+
+            if amount_dec > remaining_bill_due:
+                raise ValueError(
+                    f"Overpayment rejected for bill {target_bill.bill_number}: Due is ₹{remaining_bill_due:.2f}, payment was ₹{amount_dec:.2f}."
+                )
+
+            new_bill_paid = existing_paid + amount_dec
+            if new_bill_paid >= target_bill.total_amount:
+                target_bill.payment_status = PaymentStatus.PAID
+            elif new_bill_paid > Decimal("0.00"):
+                target_bill.payment_status = PaymentStatus.PARTIAL
+            else:
+                target_bill.payment_status = PaymentStatus.PENDING
+            db.add(target_bill)
+        else:
+            # Auto-apply to oldest pending/partial bills (FIFO)
+            unpaid_bills = (
+                db.query(Bill)
+                .filter(
+                    Bill.customer_id == customer.id,
+                    Bill.payment_status.in_([PaymentStatus.PENDING, PaymentStatus.PARTIAL]),
+                )
+                .order_by(Bill.created_at.asc())
+                .all()
+            )
+            rem_payment = amount_dec
+            for b in unpaid_bills:
+                if rem_payment <= Decimal("0.00"):
+                    break
+                b_paid = db.query(func.coalesce(func.sum(Payment.amount), Decimal("0.00"))).filter(
+                    Payment.bill_id == b.id
+                ).scalar()
+                b_due = b.total_amount - b_paid
+                if rem_payment >= b_due:
+                    b.payment_status = PaymentStatus.PAID
+                    rem_payment -= b_due
+                    target_bill = b
+                else:
+                    b.payment_status = PaymentStatus.PARTIAL
+                    rem_payment = Decimal("0.00")
+                    target_bill = b
+                db.add(b)
+
+        # Deduct from customer's running balance
+        customer.outstanding_balance = max(Decimal("0.00"), customer.outstanding_balance - amount_dec)
+        db.add(customer)
+
+        # Record Payment record
+        payment = Payment(
+            customer_id=customer.id,
+            bill_id=target_bill.id if target_bill else None,
+            business_id=business_id or customer.business_id,
+            amount=amount_dec,
+            payment_method=pay_method_enum,
+            notes=notes or (f"Payment of ₹{amount_dec:.2f} received" + (f" for {target_bill.bill_number}" if target_bill else "")),
+        )
+        db.add(payment)
+
+        # Audit log
+        audit = AuditLog(
+            business_id=business_id or customer.business_id,
+            actor_type=ActorType.ROBOT,
+            actor_id=customer.name,
+            action="RECORD_PAYMENT",
+            entity_type="Payment",
+            entity_id=str(customer.id),
+            details={
+                "customer_name": customer.name,
+                "amount": float(amount_dec),
+                "payment_method": pay_method_enum.value,
+                "remaining_balance": float(customer.outstanding_balance),
+                "bill_number": target_bill.bill_number if target_bill else None,
+                "bill_status": target_bill.payment_status.value if target_bill else None,
+            },
+        )
+        db.add(audit)
+        db.commit()
+        db.refresh(customer)
+
+        logger.info(
+            "Recorded ₹%s payment for customer %s. Remaining due: ₹%s",
+            amount_dec, customer.name, customer.outstanding_balance
+        )
+
+        return {
+            "success": True,
+            "customer_name": customer.name,
+            "amount_paid": float(amount_dec),
+            "payment_method": pay_method_enum.value,
+            "remaining_balance": float(customer.outstanding_balance),
+            "bill_number": target_bill.bill_number if target_bill else None,
+            "bill_status": target_bill.payment_status.value if target_bill else None,
+            "notes": payment.notes,
+        }
+
     @staticmethod
     def get_todays_bills(
         db: Session,

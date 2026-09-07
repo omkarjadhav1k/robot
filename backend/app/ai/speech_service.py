@@ -1,6 +1,8 @@
 """Speech-to-Text (Groq Whisper & Gemini Multimodal) and Text-to-Speech (Edge Neural & Google TTS) services."""
 
 import base64
+from collections import OrderedDict
+import hashlib
 import io
 import logging
 import re
@@ -9,9 +11,35 @@ import urllib.parse
 import httpx
 
 from app.config import get_settings
+from app.core.http_client import get_gemini_http_client, get_general_http_client
 
-logger = logging.getLogger("business_ai_robot.speech")
+logger = logging.getLogger("max.speech")
 settings = get_settings()
+
+# In-memory deterministic LRU audio cache for instant sub-10ms TTS playback
+_AUDIO_CACHE: OrderedDict[str, bytes] = OrderedDict()
+_CACHE_MAX_SIZE = 200
+
+def _get_cache_key(text: str, language: str, voice: Optional[str] = None) -> str:
+    norm_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", text).strip().lower()
+    raw = f"{norm_text}:{language}:{voice or 'default'}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+def get_cached_audio(text: str, language: str, voice: Optional[str] = None) -> Optional[bytes]:
+    key = _get_cache_key(text, language, voice)
+    if key in _AUDIO_CACHE:
+        _AUDIO_CACHE.move_to_end(key)
+        return _AUDIO_CACHE[key]
+    return None
+
+def put_cached_audio(text: str, language: str, audio: bytes, voice: Optional[str] = None):
+    if not audio:
+        return
+    key = _get_cache_key(text, language, voice)
+    _AUDIO_CACHE[key] = audio
+    _AUDIO_CACHE.move_to_end(key)
+    if len(_AUDIO_CACHE) > _CACHE_MAX_SIZE:
+        _AUDIO_CACHE.popitem(last=False)
 
 HINDI_WORDS_PATTERN = re.compile(
     r"\b(hai|hain|mein|ka|ke|ki|kar|diya|diye|bana|aaj|kitna|kitne|available|nahi|kya|bhej|doon|karoon|aur|ek|do|teen)\b",
@@ -56,14 +84,14 @@ async def transcribe_with_groq(audio_bytes: bytes, filename: str = "audio.wav") 
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, headers=headers, data=data, files=files)
-            if resp.status_code == 200:
-                result = resp.json()
-                return result.get("text", "").strip()
-            else:
-                logger.warning(f"Groq Whisper returned HTTP {resp.status_code}: {resp.text[:100]}")
-                return ""
+        client = get_general_http_client()
+        resp = await client.post(url, headers=headers, data=data, files=files)
+        if resp.status_code == 200:
+            result = resp.json()
+            return result.get("text", "").strip()
+        else:
+            logger.warning(f"Groq Whisper returned HTTP {resp.status_code}: {resp.text[:100]}")
+            return ""
     except Exception as e:
         logger.warning(f"Groq Whisper API error: {e}")
         return ""
@@ -109,21 +137,21 @@ async def transcribe_with_gemini(audio_bytes: bytes, mime_type: str = "audio/wav
         },
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        for m in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={clean_key}"
-            try:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for p in parts:
-                            if "text" in p:
-                                return p["text"].strip().strip("\"'")
-            except Exception as e:
-                logger.warning(f"Gemini transcription with {m} failed: {e}")
+    client = get_gemini_http_client()
+    for m in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={clean_key}"
+        try:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    for p in parts:
+                        if "text" in p:
+                            return p["text"].strip().strip("\"'")
+        except Exception as e:
+            logger.warning(f"Gemini transcription with {m} failed: {e}")
 
     return ""
 
@@ -187,32 +215,42 @@ async def synthesize_with_google_tts(text: str, language: str = "hi") -> bytes:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200 and len(resp.content) > 500:
-                return resp.content
+        client = get_general_http_client()
+        resp = await client.get(url, headers=headers)
+        if resp.status_code == 200 and len(resp.content) > 500:
+            return resp.content
     except Exception as e:
         logger.warning(f"Google TTS fallback error: {e}")
 
     return b""
 
 
-async def synthesize_speech(text: str, language: Optional[str] = None) -> bytes:
+async def synthesize_speech(text: str, language: Optional[str] = None, voice: Optional[str] = None) -> bytes:
     """
-    Master TTS dispatcher:
-    1. Auto-detects Hindi/Hinglish, Marathi, or English.
-    2. Uses Microsoft Edge Neural Indian voice.
-    3. Gracefully falls back to Google TTS if Edge TTS is unavailable.
+    Master TTS dispatcher with sub-10ms LRU cache:
+    1. Checks deterministic in-memory cache first.
+    2. Auto-detects Hindi/Hinglish, Marathi, or English if not specified.
+    3. Uses Microsoft Edge Neural Indian voice.
+    4. Gracefully falls back to Google TTS if Edge TTS is unavailable.
+    5. Saves synthesized audio to cache.
     """
     if not text or not text.strip():
         return b""
 
     lang = language or detect_language(text)
 
-    # 1. Primary: Edge Neural TTS
-    audio = await synthesize_with_edge_tts(text, language=lang)
-    if audio:
-        return audio
+    # Check cache first
+    cached = get_cached_audio(text, lang, voice)
+    if cached:
+        return cached
 
-    # 2. Fallback: Google TTS
-    return await synthesize_with_google_tts(text, language=lang)
+    # 1. Primary: Edge Neural TTS
+    audio = await synthesize_with_edge_tts(text, language=lang, voice=voice)
+    if not audio:
+        # 2. Fallback: Google TTS
+        audio = await synthesize_with_google_tts(text, language=lang)
+
+    if audio:
+        put_cached_audio(text, lang, audio, voice)
+
+    return audio

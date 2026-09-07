@@ -27,7 +27,9 @@ def test_robot_heartbeat_and_status(client: TestClient):
         "uptime_seconds": 120,
     }
 
-    # 1. Post heartbeat
+    # 1. Drain any pending commands left from previous tests and post heartbeat
+    while client.get(f"/robots/{robot_id}/commands/pending").json():
+        pass
     hb_response = client.post(f"/robots/{robot_id}/heartbeat", json=payload)
     assert hb_response.status_code == 200
     hb_data = hb_response.json()

@@ -32,6 +32,9 @@ from app.models.reminder import (
 )
 from app.models.robot import RobotDevice
 from app.models.robot_command import AIActivity, CommandStatus, RobotCommand
+from app.models.ai_memory import AIMemory
+from app.models.security import OwnerSecurity, SecurityEvent
+from app.models.task import AITask, TaskStatus, TaskType
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -68,4 +71,10 @@ __all__ = [
     "ConversationSession",
     "ConversationMessage",
     "ConversationState",
+    "AIMemory",
+    "AITask",
+    "TaskType",
+    "TaskStatus",
+    "OwnerSecurity",
+    "SecurityEvent",
 ]

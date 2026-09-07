@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Business AI Robot — Brain Training & Operations Console</title>
+  <title>MAX — Manager AI eXecutive Operations Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -53,10 +53,10 @@
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight tracking-wide flex items-center space-x-2">
-            <span>BUSINESS AI ROBOT</span>
+            <span>MAX — MANAGER AI EXECUTIVE</span>
             <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">ONLINE</span>
           </h1>
-          <p class="text-xs text-slate-400">Central Brain & Knowledge Trainer v0.2.0</p>
+          <p class="text-xs text-slate-400">Autonomous Retail Store Manager & Brain Trainer Console v1.0</p>
         </div>
       </div>
 
@@ -68,34 +68,50 @@
           <span id="headerActiveRules" class="font-semibold text-emerald-400">0</span>
         </div>
         <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-2">
-          <span class="text-slate-400">Today's Revenue:</span>
-          <span id="headerRevenue" class="font-semibold text-indigo-400">₹0.00</span>
+          <span class="text-slate-400">Today's Sales:</span>
+          <span id="headerSales" class="font-semibold text-white">₹0.00</span>
         </div>
         <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-2">
-          <span class="text-slate-400">WhatsApp:</span>
-          <span id="headerWhatsAppStatus" class="font-semibold text-emerald-400">Ready</span>
+          <span class="text-slate-400">Due Balance:</span>
+          <span id="headerDue" class="font-semibold text-amber-400">₹0.00</span>
         </div>
       </div>
     </div>
 
     <!-- TABS BAR -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 text-sm font-medium border-t border-slate-800/50">
-      <button onclick="switchTab('tab-chat')" id="tabBtn-chat" class="tab-btn py-3 px-1 border-b-2 border-indigo-500 text-indigo-400 flex items-center space-x-2">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-6 text-sm font-medium border-t border-slate-800/50 overflow-x-auto">
+      <button onclick="switchTab('tab-chat')" id="tabBtn-chat" class="tab-btn py-3 px-1 border-b-2 border-indigo-500 text-indigo-400 flex items-center space-x-2 whitespace-nowrap">
         <i class="fa-solid fa-graduation-cap"></i>
-        <span>Brain Trainer & Chat</span>
+        <span>MAX Chat</span>
       </button>
-      <button onclick="switchTab('tab-rules')" id="tabBtn-rules" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+      <button onclick="switchTab('tab-tasks')" id="tabBtn-tasks" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-list-check"></i>
+        <span>Tasks</span>
+      </button>
+      <button onclick="switchTab('tab-memories')" id="tabBtn-memories" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-lightbulb"></i>
+        <span>AI Memories</span>
+      </button>
+      <button onclick="switchTab('tab-ledger')" id="tabBtn-ledger" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-book-open"></i>
+        <span>Customer Ledgers</span>
+      </button>
+      <button onclick="switchTab('tab-security')" id="tabBtn-security" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Security & PIN</span>
+      </button>
+      <button onclick="switchTab('tab-rules')" id="tabBtn-rules" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
         <i class="fa-solid fa-brain"></i>
-        <span>Instruction Manager</span>
+        <span>Rules</span>
         <span id="rulesBadge" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-slate-800 text-slate-300">0</span>
       </button>
-      <button onclick="switchTab('tab-store')" id="tabBtn-store" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+      <button onclick="switchTab('tab-store')" id="tabBtn-store" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
         <i class="fa-solid fa-store"></i>
-        <span>Store & WhatsApp Hub</span>
+        <span>Store & WhatsApp</span>
       </button>
-      <button onclick="switchTab('tab-hardware')" id="tabBtn-hardware" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+      <button onclick="switchTab('tab-hardware')" id="tabBtn-hardware" class="tab-btn py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
         <i class="fa-solid fa-microchip"></i>
-        <span>Hardware Relays</span>
+        <span>Relays</span>
       </button>
     </div>
   </header>
@@ -474,6 +490,304 @@
       </div>
     </section>
 
+    <!-- ============================================================== -->
+    <!-- TAB: OPERATIONAL TASKS & REMINDERS                             -->
+    <!-- ============================================================== -->
+    <section id="tab-tasks" class="tab-content hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">Operational Tasks & Followups</h2>
+          <p class="text-xs text-slate-400">Manage natural reminders, customer collection tasks, and operational items.</p>
+        </div>
+        <button onclick="loadTasks()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700 flex items-center space-x-1.5">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Refresh Tasks</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Add Task Form -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-indigo-400">
+            <i class="fa-solid fa-plus-circle"></i>
+            <span>Create New Task</span>
+          </h3>
+          <form onsubmit="handleCreateTask(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Task Description</label>
+              <textarea id="taskDescInput" required rows="3" placeholder="e.g. Ramesh ka 500 baki hai kal yaad dila dena" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"></textarea>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Customer Name (Optional)</label>
+              <input type="text" id="taskCustomerInput" placeholder="e.g. Ramesh" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30">
+              Add Task
+            </button>
+          </form>
+        </div>
+
+        <!-- Task List Table -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2">
+            <i class="fa-solid fa-list-check text-emerald-400"></i>
+            <span>Task Queue</span>
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-800/60 text-slate-400 uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th class="p-2.5 rounded-l-lg">Task</th>
+                  <th class="p-2.5">Type</th>
+                  <th class="p-2.5">Customer</th>
+                  <th class="p-2.5">Status</th>
+                  <th class="p-2.5 rounded-r-lg text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="tasksTableBody" class="divide-y divide-slate-800">
+                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading tasks...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB: AI CONTEXTUAL MEMORIES                                   -->
+    <!-- ============================================================== -->
+    <section id="tab-memories" class="tab-content hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">MAX Dynamic AI Memory</h2>
+          <p class="text-xs text-slate-400">Contextual preferences, operating habits, and customer traits. (Database truth strictly overrides AI memories).</p>
+        </div>
+        <button onclick="loadMemories()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700 flex items-center space-x-1.5">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Add Memory Form -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-indigo-400">
+            <i class="fa-solid fa-brain"></i>
+            <span>Save New Memory</span>
+          </h3>
+          <form onsubmit="handleCreateMemory(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Memory Content</label>
+              <textarea id="memContentInput" required rows="3" placeholder="e.g. Ramesh prefers paying cash, or Sugar is kept on shelf 3" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"></textarea>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Memory Type</label>
+              <select id="memTypeInput" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+                <option value="BUSINESS_PREFERENCE">Business Preference</option>
+                <option value="CUSTOMER_PREFERENCE">Customer Preference</option>
+                <option value="HABIT">Operating Habit</option>
+              </select>
+            </div>
+            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30">
+              Save Memory
+            </button>
+          </form>
+        </div>
+
+        <!-- Memories Grid -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2">
+            <i class="fa-solid fa-lightbulb text-amber-400"></i>
+            <span>Stored AI Memories</span>
+          </h3>
+          <div id="memoriesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="p-4 text-center text-slate-500 col-span-2">Loading memories...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB: CUSTOMER LEDGERS & PARTIAL PAYMENTS                      -->
+    <!-- ============================================================== -->
+    <section id="tab-ledger" class="tab-content hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">Customer Ledgers & Payments</h2>
+          <p class="text-xs text-slate-400">Track complete customer account balances, invoices, and record partial/full payments.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Search & Record Payment Form -->
+        <div class="space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-emerald-400">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>Lookup Ledger</span>
+            </h3>
+            <div class="flex space-x-2">
+              <input type="text" id="ledgerSearchInput" placeholder="Customer name (e.g. Rahul, Amit)" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+              <button onclick="searchCustomerLedger()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl">
+                Search
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-indigo-400">
+              <i class="fa-solid fa-hand-holding-dollar"></i>
+              <span>Record Payment</span>
+            </h3>
+            <form onsubmit="handleRecordPayment(event)" class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Customer Name</label>
+                <input type="text" id="payCustName" required placeholder="e.g. Rahul" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Amount (₹)</label>
+                <input type="number" step="0.01" id="payAmount" required placeholder="e.g. 500" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Payment Method</label>
+                <select id="payMethod" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+                  <option value="CASH">CASH</option>
+                  <option value="UPI">UPI</option>
+                  <option value="CARD">CARD</option>
+                  <option value="CREDIT">CREDIT</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Notes / Reference</label>
+                <input type="text" id="payNotes" placeholder="e.g. GPay UPI reference" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+              </div>
+              <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-emerald-600/30">
+                Record Payment
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Ledger View & Timeline -->
+        <div class="lg:col-span-2 space-y-4">
+          <!-- Summary Banner -->
+          <div id="ledgerSummaryCard" class="bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 rounded-2xl p-5 shadow-xl hidden">
+            <div class="flex items-center justify-between mb-2">
+              <h3 id="ledgerCustTitle" class="text-base font-bold text-white">Customer Ledger</h3>
+              <span id="ledgerBalanceBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Due: ₹0.00</span>
+            </div>
+            <p id="ledgerSummaryText" class="text-xs text-indigo-200 leading-relaxed">Search a customer to view ledger summary.</p>
+          </div>
+
+          <!-- Entries Table -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2">
+              <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+              <span>Transaction History</span>
+            </h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-800/60 text-slate-400 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th class="p-2.5 rounded-l-lg">Type</th>
+                    <th class="p-2.5">Date / Bill #</th>
+                    <th class="p-2.5">Details</th>
+                    <th class="p-2.5">Status</th>
+                    <th class="p-2.5 rounded-r-lg text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="ledgerTableBody" class="divide-y divide-slate-800">
+                  <tr><td colspan="5" class="p-4 text-center text-slate-500">Enter a customer name above and click Search.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== -->
+    <!-- TAB: SECURITY & PIN MANAGEMENT                                -->
+    <!-- ============================================================== -->
+    <section id="tab-security" class="tab-content hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">Owner Security & Access Control</h2>
+          <p class="text-xs text-slate-400">PBKDF2-HMAC-SHA256 6-digit owner PIN verification, temporary authorization sessions, and audit events.</p>
+        </div>
+        <button onclick="loadSecurityEvents()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg border border-slate-700 flex items-center space-x-1.5">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Refresh Log</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Verification Forms -->
+        <div class="space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-indigo-400">
+              <i class="fa-solid fa-key"></i>
+              <span>Verify Owner PIN</span>
+            </h3>
+            <form onsubmit="handleVerifyPin(event)" class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">6-Digit Owner PIN</label>
+                <input type="password" maxlength="6" id="ownerPinInput" required placeholder="••••••" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-center tracking-widest text-base text-white focus:outline-none focus:border-indigo-500">
+              </div>
+              <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30">
+                Verify & Authorize (5 min)
+              </button>
+              <div id="pinVerifyResult" class="text-xs hidden p-2 rounded-lg"></div>
+            </form>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2 text-amber-400">
+              <i class="fa-solid fa-lock"></i>
+              <span>Change Owner PIN</span>
+            </h3>
+            <form onsubmit="handleChangePin(event)" class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Current PIN</label>
+                <input type="password" maxlength="6" id="oldPinInput" required placeholder="••••••" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">New 6-Digit PIN</label>
+                <input type="password" maxlength="6" id="newPinInput" required placeholder="••••••" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white">
+              </div>
+              <button type="submit" class="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-amber-600/30">
+                Update PIN
+              </button>
+              <div id="pinChangeResult" class="text-xs hidden p-2 rounded-lg"></div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Security Event Log Table -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-semibold mb-3 flex items-center space-x-2">
+            <i class="fa-solid fa-shield-halved text-rose-400"></i>
+            <span>Security Audit Trail</span>
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-800/60 text-slate-400 uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th class="p-2.5 rounded-l-lg">Time</th>
+                  <th class="p-2.5">Action</th>
+                  <th class="p-2.5">Result</th>
+                  <th class="p-2.5 rounded-r-lg">Details</th>
+                </tr>
+              </thead>
+              <tbody id="securityEventsTableBody" class="divide-y divide-slate-800">
+                <tr><td colspan="4" class="p-4 text-center text-slate-500">Loading security events...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- ADD RULE MODAL DIALOG -->
@@ -571,6 +885,9 @@
 
       if (tabId === 'tab-rules') loadRules();
       if (tabId === 'tab-store') loadStoreData();
+      if (tabId === 'tab-tasks') loadTasks();
+      if (tabId === 'tab-memories') loadMemories();
+      if (tabId === 'tab-security') loadSecurityEvents();
     }
 
     function insertPrompt(txt) {
@@ -984,6 +1301,291 @@
         setTimeout(() => {
           led.className = 'w-6 h-6 rounded-full bg-slate-700 border-2 border-slate-600 transition';
         }, 1500);
+      }
+    }
+
+    let currentAuthToken = null;
+
+    // --- Tasks Management ---
+    async function loadTasks() {
+      try {
+        const res = await fetch('/api/v1/admin/tasks');
+        const tasks = await res.json();
+        const tbody = document.getElementById('tasksTableBody');
+        const badge = document.getElementById('tasksBadge');
+        if (badge) badge.innerText = tasks.filter(t => t.status === 'PENDING').length;
+        if (!tasks || tasks.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">No operational tasks found.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = tasks.map(t => `
+          <tr class="hover:bg-slate-800/40">
+            <td class="p-2.5 font-medium text-white">${t.description}</td>
+            <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-indigo-300 border border-slate-700">${t.task_type}</span></td>
+            <td class="p-2.5 text-slate-300">${t.customer_name || '—'}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] ${t.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}">
+                ${t.status}
+              </span>
+            </td>
+            <td class="p-2.5 text-right">
+              ${t.status === 'PENDING' ? `
+                <button onclick="completeTask('${t.id}')" class="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition">
+                  Complete
+                </button>
+              ` : '<span class="text-slate-500 text-xs">Done</span>'}
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load tasks', err);
+      }
+    }
+
+    async function handleCreateTask(e) {
+      e.preventDefault();
+      const desc = document.getElementById('taskDescInput').value.trim();
+      const cust = document.getElementById('taskCustomerInput').value.trim();
+      if (!desc) return;
+      try {
+        const res = await fetch('/api/v1/admin/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: desc, customer_name: cust || null })
+        });
+        if (res.ok) {
+          document.getElementById('taskDescInput').value = '';
+          document.getElementById('taskCustomerInput').value = '';
+          loadTasks();
+        }
+      } catch (err) {
+        alert('Failed to add task: ' + err.message);
+      }
+    }
+
+    async function completeTask(taskId) {
+      try {
+        await fetch(`/api/v1/admin/tasks/${taskId}/complete`, { method: 'POST' });
+        loadTasks();
+      } catch (err) {
+        alert('Failed to complete task: ' + err.message);
+      }
+    }
+
+    // --- AI Memories Management ---
+    async function loadMemories() {
+      try {
+        const res = await fetch('/api/v1/admin/memories');
+        const mems = await res.json();
+        const container = document.getElementById('memoriesContainer');
+        if (!mems || mems.length === 0) {
+          container.innerHTML = '<div class="p-4 text-center text-slate-500 col-span-2">No AI memories stored yet.</div>';
+          return;
+        }
+        container.innerHTML = mems.map(m => `
+          <div class="bg-slate-800/50 border border-slate-700/80 rounded-xl p-3 flex flex-col justify-between">
+            <p class="text-xs text-white mb-2 leading-relaxed">"${m.content}"</p>
+            <div class="flex items-center justify-between text-[10px] text-slate-400">
+              <span class="px-1.5 py-0.5 rounded bg-slate-700/60 text-amber-300 font-mono">${m.memory_type}</span>
+              <span>Importance: ${m.importance}/10</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load memories', err);
+      }
+    }
+
+    async function handleCreateMemory(e) {
+      e.preventDefault();
+      const content = document.getElementById('memContentInput').value.trim();
+      const type = document.getElementById('memTypeInput').value;
+      if (!content) return;
+      try {
+        const res = await fetch('/api/v1/admin/memories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content, memory_type: type })
+        });
+        if (res.ok) {
+          document.getElementById('memContentInput').value = '';
+          loadMemories();
+        }
+      } catch (err) {
+        alert('Failed to store memory: ' + err.message);
+      }
+    }
+
+    // --- Customer Ledgers & Payments ---
+    async function searchCustomerLedger() {
+      const name = document.getElementById('ledgerSearchInput').value.trim();
+      if (!name) return;
+      const tbody = document.getElementById('ledgerTableBody');
+      tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">Searching ledger...</td></tr>';
+      try {
+        const res = await fetch(`/api/v1/admin/customers/${encodeURIComponent(name)}/ledger`);
+        const data = await res.json();
+        if (!res.ok || !data.found) {
+          tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-amber-400">${data.message || 'Customer not found.'}</td></tr>`;
+          document.getElementById('ledgerSummaryCard').classList.add('hidden');
+          return;
+        }
+
+        document.getElementById('ledgerSummaryCard').classList.remove('hidden');
+        document.getElementById('ledgerCustTitle').innerText = `${data.name}'s Account Ledger`;
+        document.getElementById('ledgerBalanceBadge').innerText = `Due: ₹${data.outstanding_balance.toFixed(2)}`;
+        document.getElementById('ledgerSummaryText').innerText = data.summary;
+        document.getElementById('payCustName').value = data.name;
+
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">No transactions recorded yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = entries.map(e => `
+          <tr class="hover:bg-slate-800/40">
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${e.type === 'INVOICE' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'}">
+                ${e.type}
+              </span>
+            </td>
+            <td class="p-2.5 text-slate-300">${e.bill_number || '—'}</td>
+            <td class="p-2.5 text-slate-400">${e.details}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] ${e.status === 'PAID' || e.status === 'COMPLETED' ? 'text-emerald-400' : 'text-amber-400'}">
+                ${e.status}
+              </span>
+            </td>
+            <td class="p-2.5 text-right font-semibold ${e.type === 'INVOICE' ? 'text-white' : 'text-emerald-400'}">
+              ${e.type === 'PAYMENT' ? '-' : '+'}₹${e.amount.toFixed(2)}
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-rose-400">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    async function handleRecordPayment(e) {
+      e.preventDefault();
+      const cust = document.getElementById('payCustName').value.trim();
+      const amt = parseFloat(document.getElementById('payAmount').value);
+      const method = document.getElementById('payMethod').value;
+      const notes = document.getElementById('payNotes').value.trim();
+      if (!cust || !amt) return;
+
+      try {
+        const res = await fetch('/api/v1/admin/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: cust,
+            amount: amt,
+            payment_method: method,
+            notes: notes || null
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ Payment of ₹${data.amount_paid} recorded for ${data.customer_name}. Remaining due: ₹${data.remaining_balance}`);
+          document.getElementById('payAmount').value = '';
+          document.getElementById('payNotes').value = '';
+          document.getElementById('ledgerSearchInput').value = cust;
+          searchCustomerLedger();
+          loadStoreData();
+        } else {
+          alert('❌ ' + (data.detail || 'Failed to record payment'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    // --- Security & PIN ---
+    async function handleVerifyPin(e) {
+      e.preventDefault();
+      const pin = document.getElementById('ownerPinInput').value.trim();
+      const resBox = document.getElementById('pinVerifyResult');
+      resBox.classList.remove('hidden');
+      try {
+        const res = await fetch('/api/v1/security/verify-owner', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: pin, action: 'ADMIN_CONSOLE_VERIFY' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentAuthToken = data.auth_token;
+          resBox.className = 'text-xs p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+          resBox.innerText = `✅ Verified! Temporary token active for 5 minutes. High-risk operations authorized.`;
+          document.getElementById('ownerPinInput').value = '';
+          loadSecurityEvents();
+        } else {
+          currentAuthToken = null;
+          resBox.className = 'text-xs p-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30';
+          resBox.innerText = `❌ ${data.detail || 'PIN verification failed.'}`;
+          loadSecurityEvents();
+        }
+      } catch (err) {
+        resBox.className = 'text-xs p-2.5 rounded-xl bg-rose-500/20 text-rose-300';
+        resBox.innerText = 'Network error: ' + err.message;
+      }
+    }
+
+    async function handleChangePin(e) {
+      e.preventDefault();
+      const oldPin = document.getElementById('oldPinInput').value.trim();
+      const newPin = document.getElementById('newPinInput').value.trim();
+      const resBox = document.getElementById('pinChangeResult');
+      resBox.classList.remove('hidden');
+      try {
+        const res = await fetch('/api/v1/security/change-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_pin: oldPin, new_pin: newPin })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          resBox.className = 'text-xs p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+          resBox.innerText = '✅ Owner PIN changed successfully.';
+          document.getElementById('oldPinInput').value = '';
+          document.getElementById('newPinInput').value = '';
+          loadSecurityEvents();
+        } else {
+          resBox.className = 'text-xs p-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30';
+          resBox.innerText = `❌ ${data.detail || 'PIN change failed.'}`;
+          loadSecurityEvents();
+        }
+      } catch (err) {
+        resBox.className = 'text-xs p-2.5 rounded-xl bg-rose-500/20 text-rose-300';
+        resBox.innerText = 'Network error: ' + err.message;
+      }
+    }
+
+    async function loadSecurityEvents() {
+      try {
+        const res = await fetch('/api/v1/security/events?limit=25');
+        const events = await res.json();
+        const tbody = document.getElementById('securityEventsTableBody');
+        if (!events || events.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">No security events recorded.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = events.map(e => `
+          <tr class="hover:bg-slate-800/40">
+            <td class="p-2.5 text-slate-400">${e.timestamp ? e.timestamp.replace('T', ' ').substring(0, 19) : '—'}</td>
+            <td class="p-2.5 font-mono text-white font-medium">${e.action}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${e.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
+                ${e.success ? 'SUCCESS' : 'FAILED'}
+              </span>
+            </td>
+            <td class="p-2.5 text-slate-400 text-[11px]">${JSON.stringify(e.metadata || {})}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load security events', err);
       }
     }
 

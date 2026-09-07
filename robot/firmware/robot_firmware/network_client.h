@@ -20,21 +20,17 @@ private:
     bool _isConnected;
     String _conversationId;
 
-    bool _beginHttp(HTTPClient& http, WiFiClientSecure& sec, WiFiClient& plain, const String& url) {
-        if (url.startsWith("https://")) {
-            sec.setInsecure();
-            sec.setTimeout(15);
-            return http.begin(sec, url);
-        } else {
-            plain.setTimeout(10);
-            return http.begin(plain, url);
-        }
+    // Reusable HTTPS helper — creates WiFiClientSecure for Render HTTPS
+    bool _beginHttp(HTTPClient& http, WiFiClientSecure& sec, const String& url, int timeoutMs) {
+        sec.setInsecure();  // Skip certificate verification for Render
+        sec.setTimeout(timeoutMs / 1000);
+        http.setTimeout(timeoutMs);
+        return http.begin(sec, url);
     }
 
-    void _endHttp(HTTPClient& http, WiFiClientSecure& sec, WiFiClient& plain) {
+    void _endHttp(HTTPClient& http, WiFiClientSecure& sec) {
         http.end();
         sec.stop();
-        plain.stop();
     }
 
     // Helper: Extract JSON string value by key
@@ -70,6 +66,32 @@ private:
         return json.substring(start, end).toInt();
     }
 
+    // Helper: Extract JSON number/float/int as String
+    String _extractJsonNumber(const String& json, const String& key) {
+        String searchKey = "\"" + key + "\":";
+        int start = json.indexOf(searchKey);
+        if (start == -1) return "";
+        start += searchKey.length();
+        while (start < json.length() && (json[start] == ' ' || json[start] == '\t')) start++;
+        int end = start;
+        while (end < json.length() && (isDigit(json[end]) || json[end] == '.' || json[end] == '-')) end++;
+        if (start == end) return "";
+        return json.substring(start, end);
+    }
+
+    // Translate HTTP error codes to friendly Hindi/Hinglish messages
+    String _translateHttpError(int httpCode) {
+        if (httpCode == -1 || httpCode == -11) {
+            return "Server se connect hone mein thodi dikkat ho rahi hai. Ek baar phir try karein.";
+        } else if (httpCode == 503 || httpCode == 504) {
+            return "Backend server abhi busy hai, thodi der mein phir boliye.";
+        } else if (httpCode == 408 || httpCode == -4) {
+            return "Server ne response dene mein bahut time liya. Phir se try karein.";
+        } else {
+            return "Response lene mein issue aaya (Code " + String(httpCode) + "). Phir try karein.";
+        }
+    }
+
 public:
     RobotNetworkClient(StatusLED* led, RelayController* relays, DisplayManager* display)
         : _led(led), _relays(relays), _display(display),
@@ -77,7 +99,7 @@ public:
 
     void resetConversation() {
         _conversationId = "";
-        Serial.println(F("🔄 Conversation session reset on ESP32."));
+        Serial.println(F("🔄 Conversation session reset."));
     }
 
     String getConversationId() const {
@@ -111,32 +133,36 @@ public:
             _display->showStatus("ONLINE", WiFi.localIP().toString(), _relays->getRelaysJson());
             _led->setPattern(PATTERN_ONLINE);
         } else {
-            Serial.println(F("\n❌ Wi-Fi Connection failed!"));
+            _isConnected = false;
+            Serial.println(F("\n❌ Wi-Fi Connection failed! Will retry..."));
             _display->showStatus("WIFI ERROR", "Failed to connect");
             _led->setPattern(PATTERN_ERROR);
         }
     }
 
     void update() {
-        if (WiFi.status() != WL_CONNECTED) {
-            _isConnected = false;
-            unsigned long now = millis();
-            if (now - _lastWifiCheckTime > 5000) {
-                _lastWifiCheckTime = now;
-                Serial.println(F("[WIFI] Disconnected! Reconnecting..."));
-                WiFi.reconnect();
-            }
-            return;
-        }
-
-        _isConnected = true;
         unsigned long now = millis();
 
-        // Send Heartbeat periodically
-        if (now - _lastHeartbeatTime > HEARTBEAT_INTERVAL_MS || _lastHeartbeatTime == 0) {
+        // Maintain Wi-Fi
+        if (now - _lastWifiCheckTime >= WIFI_RETRY_INTERVAL_MS) {
+            _lastWifiCheckTime = now;
+            if (WiFi.status() != WL_CONNECTED) {
+                _isConnected = false;
+                _led->setPattern(PATTERN_CONNECTING);
+                Serial.println(F("[WIFI] Disconnected! Reconnecting..."));
+                WiFi.reconnect();
+                return;
+            } else if (!_isConnected) {
+                _isConnected = true;
+                _led->setPattern(PATTERN_ONLINE);
+                _display->showStatus("ONLINE", WiFi.localIP().toString(), _relays->getRelaysJson());
+            }
+        }
+
+        // Periodic Heartbeat & Command Polling
+        if (_isConnected && (now - _lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS)) {
             _lastHeartbeatTime = now;
             sendHeartbeat();
-            pollPendingCommands();
         }
     }
 
@@ -145,12 +171,14 @@ public:
 
         HTTPClient http;
         WiFiClientSecure sec;
-        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/heartbeat";
 
-        _beginHttp(http, sec, plain, url);
+        _beginHttp(http, sec, url, HTTP_TIMEOUT_HEARTBEAT);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(12000);
+
+        String micStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
+        String spkStatus = VIRTUAL_AUDIO_MODE ? "virtual" : "ok";
+        String oledStatus = VIRTUAL_DISPLAY_MODE ? "virtual" : "ok";
 
         String payload = "{";
         payload += "\"robot_id\":\"" + String(ROBOT_ID) + "\",";
@@ -158,65 +186,84 @@ public:
         payload += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
         payload += "\"uptime_seconds\":" + String(millis() / 1000) + ",";
         payload += "\"relays_state\":" + _relays->getRelaysJson() + ",";
-        payload += "\"peripherals\":{\"mic\":\"ok\",\"speaker\":\"ok\",\"oled\":\"ok\",\"relays\":\"ok\"}";
+        payload += "\"peripherals\":{";
+        payload += "\"mic\":\"" + micStatus + "\",";
+        payload += "\"speaker\":\"" + spkStatus + "\",";
+        payload += "\"oled\":\"" + oledStatus + "\",";
+        payload += "\"relays\":\"ok\"";
+        payload += "}";
         payload += "}";
 
         int httpCode = http.POST(payload);
-        if (httpCode != 200) {
-            Serial.printf("[HEARTBEAT] POST failed with HTTP code: %d\n", httpCode);
+        if (httpCode == 200) {
+            String response = http.getString();
+            int pendingCount = _extractJsonInt(response, "pending_commands_count", 0);
+            if (pendingCount > 0) {
+                Serial.printf("[MAX] %d pending command(s) waiting! Fetching...\n", pendingCount);
+                _endHttp(http, sec);
+                fetchAndExecuteCommands();
+                return;
+            }
+        } else if (httpCode > 0) {
+            Serial.printf("[HEARTBEAT] HTTP %d\n", httpCode);
         }
-        _endHttp(http, sec, plain);
+        // Silently ignore negative codes for heartbeat (expected during cold start)
+        _endHttp(http, sec);
     }
 
-    void pollPendingCommands() {
+    void fetchAndExecuteCommands() {
         if (WiFi.status() != WL_CONNECTED) return;
 
         HTTPClient http;
         WiFiClientSecure sec;
-        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/pending";
 
-        _beginHttp(http, sec, plain, url);
-        http.setTimeout(10000);
+        _beginHttp(http, sec, url, HTTP_TIMEOUT_COMMAND);
 
         int httpCode = http.GET();
         if (httpCode == 200) {
-            String payload = http.getString();
-            if (payload != "[]" && payload.length() > 2) {
-                Serial.printf("[CMD] Received command payload: %s\n", payload.c_str());
-                int start = payload.indexOf('{');
-                int end = payload.lastIndexOf('}');
+            String body = http.getString();
+            if (body != "[]" && body.length() > 2) {
+                Serial.printf("[CMD] Received: %s\n", body.c_str());
+                int start = body.indexOf('{');
+                int end = body.lastIndexOf('}');
                 if (start != -1 && end != -1) {
-                    String singleCmd = payload.substring(start, end + 1);
+                    String singleCmd = body.substring(start, end + 1);
                     executeSingleCommand(singleCmd);
                 }
             }
         }
-        _endHttp(http, sec, plain);
+        _endHttp(http, sec);
     }
 
     void executeSingleCommand(const String& cmdJson) {
         String cmdId = _extractJsonString(cmdJson, "command_id");
         String action = _extractJsonString(cmdJson, "action");
 
-        Serial.printf("[EXEC] Processing command %s: %s\n", cmdId.c_str(), action.c_str());
+        Serial.printf("[EXEC] Processing %s: %s\n", cmdId.c_str(), action.c_str());
+        _led->setPattern(PATTERN_COMMAND_EXEC);
+
         bool success = false;
         String message = "";
 
         if (action == "set_relay") {
-            int relay = _extractJsonInt(cmdJson, "relay", 1);
-            String state = _extractJsonString(cmdJson, "state");
-            bool turnOn = (state == "on" || state == "1" || state == "true");
-            _relays->setRelay(relay, turnOn);
-            success = true;
-            message = "Relay " + String(relay) + " set to " + (turnOn ? "ON" : "OFF");
-            _display->showStatus("RELAY SWITCHED", message, _relays->getRelaysJson());
+            int relayNum = _extractJsonInt(cmdJson, "relay", 0);
+            String stateStr = _extractJsonString(cmdJson, "state");
+            bool state = (stateStr == "on" || stateStr == "1" || stateStr == "true");
+            success = _relays->setRelay(relayNum, state);
+            if (success) {
+                message = "Relay " + String(relayNum) + " turned " + (state ? "ON" : "OFF");
+                Serial.printf("[RELAY] %s\n", message.c_str());
+                _display->showStatus("RELAY SWITCHED", message, _relays->getRelaysJson());
+            } else {
+                message = "Invalid relay index: " + String(relayNum);
+            }
         } else if (action == "set_all_relays") {
-            String state = _extractJsonString(cmdJson, "state");
-            bool turnOn = (state == "on" || state == "1" || state == "true");
-            _relays->setAllRelays(turnOn);
+            String stateStr = _extractJsonString(cmdJson, "state");
+            bool state = (stateStr == "on" || stateStr == "1" || stateStr == "true");
+            _relays->setAllRelays(state);
             success = true;
-            message = "All relays set to " + String(turnOn ? "ON" : "OFF");
+            message = "All relays set to " + String(state ? "ON" : "OFF");
             _display->showStatus("EXECUTED", message, _relays->getRelaysJson());
         } else if (action == "blink_led") {
             _led->setPattern(PATTERN_COMMAND_EXEC);
@@ -229,7 +276,6 @@ public:
             message = "Unknown action: " + action;
         }
 
-        // Send ACK back to Central Brain
         sendAck(cmdId, success ? "success" : "error", message);
     }
 
@@ -238,12 +284,10 @@ public:
 
         HTTPClient http;
         WiFiClientSecure sec;
-        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/robots/" + ROBOT_ID + "/commands/" + cmdId + "/ack";
 
-        _beginHttp(http, sec, plain, url);
+        _beginHttp(http, sec, url, HTTP_TIMEOUT_ACK);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(12000);
 
         String payload = "{";
         payload += "\"status\":\"" + status + "\",";
@@ -252,37 +296,40 @@ public:
         payload += "}";
 
         int httpCode = http.POST(payload);
-        Serial.printf("[ACK] Sent for %s -> HTTP code %d\n", cmdId.c_str(), httpCode);
-        _endHttp(http, sec, plain);
+        Serial.printf("[ACK] Sent for %s -> HTTP %d\n", cmdId.c_str(), httpCode);
+        _endHttp(http, sec);
     }
 
     void sendChatToBrain(const String& prompt) {
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println(F("❌ Cannot send chat: ESP32 is not connected to Wi-Fi."));
+            Serial.println(F("❌ Cannot send: WiFi disconnected."));
             return;
         }
 
-        // Check for session reset trigger
+        // Session reset triggers
         if (prompt.equalsIgnoreCase("new chat") || prompt.equalsIgnoreCase("reset")) {
             resetConversation();
             return;
         }
 
         Serial.println();
-        Serial.println(F("--------------------------------------------------"));
-        Serial.print(F("[YOU]: "));
+        Serial.println(F("========================================"));
+        Serial.print(F("👤 YOU: "));
         Serial.println(prompt);
-        Serial.println(F("[AI THINKING] Reasoning with Gemini..."));
+
+        // Start response timer
+        unsigned long t0 = millis();
+
+        Serial.println(F("⏳ MAX is thinking..."));
         _led->setPattern(PATTERN_COMMAND_EXEC);
+        _display->showStatus("MAX THINKING...", prompt);
 
         HTTPClient http;
         WiFiClientSecure sec;
-        WiFiClient plain;
         String url = String(BACKEND_BASE_URL) + "/api/v1/voice/interact";
 
-        _beginHttp(http, sec, plain, url);
+        _beginHttp(http, sec, url, HTTP_TIMEOUT_CHAT);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(45000); // 45s timeout for cloud LLM reasoning and cold starts
 
         // Escape JSON quotes
         String cleanPrompt = prompt;
@@ -295,6 +342,8 @@ public:
         payload += "}";
 
         int httpCode = http.POST(payload);
+        unsigned long elapsed = millis() - t0;
+
         if (httpCode == 200) {
             String respBody = http.getString();
             String aiResponse = _extractJsonString(respBody, "response_text");
@@ -302,39 +351,57 @@ public:
                 aiResponse = respBody;
             }
 
-            // Retain persistent conversation_id from response
+            // Retain persistent conversation_id
             String returnedConvId = _extractJsonString(respBody, "conversation_id");
             if (returnedConvId.length() > 0) {
                 _conversationId = returnedConvId;
             }
 
-            // Extract TTS audio stream URL
-            String audioUrl = _extractJsonString(respBody, "audio_url");
-            if (audioUrl.length() > 0) {
-                Serial.printf("[SPEAKER AUDIO READY]: %s%s\n", BACKEND_BASE_URL, audioUrl.c_str());
-            }
+            // Extract latency metrics from backend
+            String totalMs = _extractJsonNumber(respBody, "total_ms");
+            String fastPathMs = _extractJsonNumber(respBody, "fast_path_ms");
+            String geminiMs = _extractJsonNumber(respBody, "gemini_ms");
 
             Serial.println();
-            Serial.print(F("[ROBOT AI]: "));
+            Serial.print(F("🤖 [MAX]: "));
             Serial.println(aiResponse);
-            Serial.println(F("--------------------------------------------------"));
-            _display->showStatus("GEMINI REPLIED", aiResponse, _relays->getRelaysJson());
+            Serial.println();
+            Serial.println(F("----------------------------------------"));
+            Serial.printf( "⏱️  ROUND-TRIP TIME: %lu ms\n", elapsed);
+            if (totalMs.length() > 0) {
+                Serial.printf("    Backend Core: %s ms", totalMs.c_str());
+                if (fastPathMs.length() > 0 && fastPathMs.toFloat() > 0) {
+                    Serial.printf(" (⚡ Fast-Path: %s ms)", fastPathMs.c_str());
+                } else if (geminiMs.length() > 0 && geminiMs.toFloat() > 0) {
+                    Serial.printf(" (🧠 Gemini AI: %s ms)", geminiMs.c_str());
+                }
+                Serial.println();
+            }
+            Serial.println(F("========================================"));
+
+            _display->showStatus("MAX REPLIED", aiResponse, _relays->getRelaysJson());
 
             // Check if there was a hardware command dispatched
             int cmdStart = respBody.indexOf("\"command_dispatched\":{");
             if (cmdStart != -1) {
-                int cmdEnd = respBody.indexOf("}", cmdStart);
+                int cmdEnd = respBody.indexOf("}", cmdStart + 21);
                 if (cmdEnd != -1) {
                     String cmdJson = respBody.substring(cmdStart + 21, cmdEnd + 1);
                     executeSingleCommand(cmdJson);
                 }
             }
         } else {
-            Serial.printf("[ERROR] Backend chat error (HTTP %d)\n", httpCode);
+            String friendlyErr = _translateHttpError(httpCode);
+            Serial.println();
+            Serial.printf("🤖 [MAX]: %s\n", friendlyErr.c_str());
+            Serial.printf("⏱️  Failed after: %lums (HTTP %d)\n", elapsed, httpCode);
+            Serial.println(F("========================================"));
+            _display->showStatus("MAX NOTICE", friendlyErr);
         }
-        _endHttp(http, sec, plain);
+
+        _endHttp(http, sec);
         _led->setPattern(PATTERN_ONLINE);
-        Serial.println(F("\nType next question or command:"));
+        Serial.println(F("\n💬 Type next question or command:"));
     }
 };
 

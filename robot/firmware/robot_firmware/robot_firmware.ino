@@ -18,7 +18,7 @@ void setup() {
 
     Serial.println();
     Serial.println(F("=================================================="));
-    Serial.println(F(" 🤖 BUSINESS AI ROBOT — HARDWARE CONTROLLER"));
+    Serial.println(F(" 🤖 MAX — MANAGER AI EXECUTIVE HARDWARE CONTROLLER"));
     Serial.printf( F("    Device ID: %s | Firmware: v%s\n"), ROBOT_ID, FIRMWARE_VERSION);
     Serial.println(F("=================================================="));
 

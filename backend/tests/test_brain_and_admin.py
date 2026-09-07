@@ -134,7 +134,7 @@ def test_admin_dashboard_endpoints(client: TestClient):
     # 1. GET /admin
     r = client.get("/admin")
     assert r.status_code == 200
-    assert "Business AI Robot" in r.text
+    assert "MAX" in r.text or "Business AI Robot" in r.text
     assert "Brain Trainer" in r.text
 
     # 2. GET /dashboard

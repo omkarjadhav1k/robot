@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Configuration settings for Business AI Robot Backend."""
 
     # Project metadata
-    PROJECT_NAME: str = "Business AI Robot"
+    PROJECT_NAME: str = "MAX — Manager AI eXecutive"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"

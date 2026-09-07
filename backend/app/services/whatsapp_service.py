@@ -112,16 +112,17 @@ class WhatsAppService:
             "type": "application/pdf",
         }
 
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(url, headers=headers, data=data, files=files)
-            if resp.status_code in (200, 201):
-                res_data = resp.json()
-                media_id = res_data.get("id")
-                logger.info("Successfully uploaded invoice PDF to Meta media: %s", media_id)
-                return media_id
-            else:
-                logger.error("Meta media upload failed with HTTP %s: %s", resp.status_code, resp.text)
-                raise RuntimeError(f"Meta media upload failed (HTTP {resp.status_code}): {resp.text}")
+        from app.core.http_client import get_general_http_client
+        client = get_general_http_client()
+        resp = await client.post(url, headers=headers, data=data, files=files)
+        if resp.status_code in (200, 201):
+            res_data = resp.json()
+            media_id = res_data.get("id")
+            logger.info("Successfully uploaded invoice PDF to Meta media: %s", media_id)
+            return media_id
+        else:
+            logger.error("Meta media upload failed with HTTP %s: %s", resp.status_code, resp.text)
+            raise RuntimeError(f"Meta media upload failed (HTTP {resp.status_code}): {resp.text}")
 
     @classmethod
     async def send_invoice_via_whatsapp(
@@ -257,67 +258,69 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                resp_json = resp.json() if resp.content else {}
+            from app.core.http_client import get_general_http_client
+            client = get_general_http_client()
+            resp = await client.post(url, headers=headers, json=payload)
+            resp_json = resp.json() if resp.content else {}
 
-                # Fallback: if template in Meta does not have a header, retry with body only
-                if resp.status_code != 200:
-                    err_info = resp_json.get("error", {})
-                    err_details = str(err_info.get("error_data", {}).get("details", ""))
-                    if "header:" in err_details or "does not contain title component" in err_details:
-                        logger.info("Template has no header component in Meta; retrying with body only...")
-                        body_only_payload = dict(payload)
-                        body_only_payload["template"] = dict(payload["template"])
-                        body_only_payload["template"]["components"] = [
-                            c for c in components if c.get("type") != "header"
-                        ]
-                        resp = await client.post(url, headers=headers, json=body_only_payload)
-                        resp_json = resp.json() if resp.content else {}
+            # Fallback: if template in Meta does not have a header, retry with body only
+            if resp.status_code != 200:
+                err_info = resp_json.get("error", {})
+                err_details = str(err_info.get("error_data", {}).get("details", ""))
+                if "header:" in err_details or "does not contain title component" in err_details:
+                    logger.info("Template has no header component in Meta; retrying with body only...")
+                    body_only_payload = dict(payload)
+                    body_only_payload["template"] = dict(payload["template"])
+                    body_only_payload["template"]["components"] = [
+                        c for c in components if c.get("type") != "header"
+                    ]
+                    resp = await client.post(url, headers=headers, json=body_only_payload)
+                    resp_json = resp.json() if resp.content else {}
 
-                        # If template succeeded and we have a generated PDF media_id, dispatch document
-                        if resp.status_code in (200, 201) and media_id:
-                            try:
-                                doc_payload = {
-                                    "messaging_product": "whatsapp",
-                                    "recipient_type": "individual",
-                                    "to": recipient,
-                                    "type": "document",
-                                    "document": {
-                                        "id": media_id,
-                                        "filename": f"Invoice_{bill.bill_number}.pdf",
-                                        "caption": f"Invoice #{bill.bill_number}",
-                                    },
-                                }
-                                await client.post(url, headers=headers, json=doc_payload)
-                                logger.info("Successfully dispatched follow-up PDF document to %s", recipient)
-                            except Exception as de:
-                                logger.warning("Follow-up PDF document send warning: %s", de)
+                    # If template succeeded and we have a generated PDF media_id, dispatch document
+                    if resp.status_code in (200, 201) and media_id:
+                        try:
+                            doc_payload = {
+                                "messaging_product": "whatsapp",
+                                "recipient_type": "individual",
+                                "to": recipient,
+                                "type": "document",
+                                "document": {
+                                    "id": media_id,
+                                    "filename": f"Invoice_{bill.bill_number}.pdf",
+                                    "caption": f"Invoice #{bill.bill_number}",
+                                },
+                            }
+                            await client.post(url, headers=headers, json=doc_payload)
+                            logger.info("Successfully dispatched follow-up PDF document to %s", recipient)
+                        except Exception as de:
+                            logger.warning("Follow-up PDF document send warning: %s", de)
 
-                if resp.status_code in (200, 201):
-                    messages = resp_json.get("messages", [])
-                    msg_id = messages[0].get("id") if messages else None
-                    logger.info("WhatsApp invoice sent successfully to %s: wamid=%s", recipient, msg_id)
-                    return WhatsAppResult(
-                        success=True,
-                        message_id=msg_id,
-                        media_id=media_id,
-                        recipient=recipient,
-                        status_code=resp.status_code,
-                        raw_response=resp_json,
-                    )
-                else:
-                    err_info = resp_json.get("error", {})
-                    err_msg = err_info.get("message") or resp.text
-                    err_code = err_info.get("code")
-                    logger.error("Meta WhatsApp API error (HTTP %s, code %s): %s", resp.status_code, err_code, err_msg)
-                    return WhatsAppResult(
-                        success=False,
-                        recipient=recipient,
-                        status_code=resp.status_code,
-                        error_message=f"Meta WhatsApp API error (code {err_code}): {err_msg}",
-                        raw_response=resp_json,
-                    )
+            if resp.status_code in (200, 201):
+                messages = resp_json.get("messages", [])
+                msg_id = messages[0].get("id") if messages else None
+                logger.info("WhatsApp invoice sent successfully to %s: wamid=%s", recipient, msg_id)
+                return WhatsAppResult(
+                    success=True,
+                    message_id=msg_id,
+                    media_id=media_id,
+                    recipient=recipient,
+                    status_code=resp.status_code,
+                    raw_response=resp_json,
+                )
+            else:
+                err_info = resp_json.get("error", {})
+                err_msg = err_info.get("message") or resp.text
+                err_code = err_info.get("code")
+                logger.error("Meta WhatsApp API error (HTTP %s, code %s): %s", resp.status_code, err_code, err_msg)
+                return WhatsAppResult(
+                    success=False,
+                    recipient=recipient,
+                    status_code=resp.status_code,
+                    error_code=str(err_code) if err_code else None,
+                    error_message=err_msg,
+                    raw_response=resp_json,
+                )
 
         except Exception as ex:
             logger.error("Exception connecting to Meta WhatsApp API: %s", ex, exc_info=True)

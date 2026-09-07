@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import re
 from app.ai.gemini_service import reason_with_gemini
 from app.database.session import get_db
 from app.models.billing import Bill, Customer
@@ -25,8 +26,12 @@ from app.models.business import Business
 from app.models.product import Product
 from app.services.billing_service import BillingService
 from app.services.brain_service import BrainService
+from app.services.customer_service import CustomerService
 from app.services.inventory_service import InventoryService
+from app.services.memory_service import MemoryService
 from app.services.report_service import ReportService
+from app.services.security_service import SecurityService
+from app.services.task_service import TaskService
 from app.services.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger("business_ai_robot.admin")
@@ -51,6 +56,25 @@ class ToggleInstructionRequest(BaseModel):
 class AdminChatRequest(BaseModel):
     message: str
     teach_mode: bool = False
+    auth_token: Optional[str] = None
+
+
+class CreateTaskRequest(BaseModel):
+    description: str
+    customer_name: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class CreateMemoryRequest(BaseModel):
+    content: str
+    memory_type: Optional[str] = "BUSINESS_PREFERENCE"
+
+
+class RecordPaymentRequest(BaseModel):
+    customer_name: str
+    amount: float
+    payment_method: Optional[str] = "CASH"
+    notes: Optional[str] = None
 
 
 # --- UI Endpoints ---
@@ -161,6 +185,77 @@ async def delete_instruction(instruction_id: uuid.UUID, db: Session = Depends(ge
     return {"success": True, "id": str(instruction_id)}
 
 
+@router.get("/api/v1/admin/tasks", tags=["admin"])
+async def list_admin_tasks(db: Session = Depends(get_db)):
+    """List operational tasks and reminders."""
+    biz = db.query(Business).first()
+    return TaskService.list_tasks(db, biz.id if biz else None, status=None, limit=50)
+
+
+@router.post("/api/v1/admin/tasks", tags=["admin"])
+async def create_admin_task(req: CreateTaskRequest, db: Session = Depends(get_db)):
+    """Create an operational task or reminder."""
+    biz = db.query(Business).first()
+    task = TaskService.create_task(
+        db,
+        description=req.description,
+        customer_name=req.customer_name,
+        business_id=biz.id if biz else None,
+    )
+    return {"success": True, "task_id": str(task.id), "description": task.description}
+
+
+@router.post("/api/v1/admin/tasks/{task_id}/complete", tags=["admin"])
+async def complete_admin_task(task_id: str, db: Session = Depends(get_db)):
+    """Mark an operational task as completed."""
+    biz = db.query(Business).first()
+    return TaskService.complete_task(db, task_id_or_keyword=task_id, business_id=biz.id if biz else None)
+
+
+@router.get("/api/v1/admin/memories", tags=["admin"])
+async def list_admin_memories(db: Session = Depends(get_db)):
+    """List contextual preferences and habits stored in AI memory."""
+    biz = db.query(Business).first()
+    return MemoryService.list_memories(db, biz.id if biz else None, limit=50)
+
+
+@router.post("/api/v1/admin/memories", tags=["admin"])
+async def create_admin_memory(req: CreateMemoryRequest, db: Session = Depends(get_db)):
+    """Store a new preference into AI memory."""
+    biz = db.query(Business).first()
+    mem = MemoryService.store_memory(
+        db,
+        biz.id if biz else None,
+        content=req.content,
+        memory_type=req.memory_type or "BUSINESS_PREFERENCE",
+    )
+    return {"success": True, "memory_id": str(mem.id), "content": mem.content}
+
+
+@router.get("/api/v1/admin/customers/{customer_name}/ledger", tags=["admin"])
+async def get_admin_customer_ledger(customer_name: str, db: Session = Depends(get_db)):
+    """Fetch chronological customer ledger, running balances, and manager summary."""
+    biz = db.query(Business).first()
+    return CustomerService.get_customer_ledger(db, customer_name=customer_name, business_id=biz.id if biz else None)
+
+
+@router.post("/api/v1/admin/payments", tags=["admin"])
+async def record_admin_payment(req: RecordPaymentRequest, db: Session = Depends(get_db)):
+    """Record customer payment and update bill/ledger status."""
+    biz = db.query(Business).first()
+    try:
+        return BillingService.record_payment(
+            db=db,
+            customer_name=req.customer_name,
+            amount=req.amount,
+            payment_method=req.payment_method or "CASH",
+            notes=req.notes,
+            business_id=biz.id if biz else None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/api/v1/admin/chat", tags=["admin"])
 async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
     """
@@ -213,8 +308,12 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
             "latencies": {"total_ms": duration},
         }
 
-    # Case 3: Live Query with Tool Calling & Dynamic Active Rules Injected
+    # Case 3: Live Query with Tool Calling & Dynamic Active Rules + AI Memories Injected
     custom_rules = BrainService.get_instruction_strings(db, biz_id)
+    relevant_mems = MemoryService.get_relevant_memories(db, biz_id, query_text=msg)
+    if relevant_mems:
+        custom_rules = list(custom_rules) + [f"AI Memory Context: {m}" for m in relevant_mems]
+
     gemini_res = await reason_with_gemini(
         user_text=msg,
         custom_instructions=custom_rules,
@@ -336,6 +435,122 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
             else:
                 response_text = "No bill found to send."
             action_type = "whatsapp_action"
+
+        elif tool_name == "record_payment":
+            amount = float(args.get("amount", 0.0))
+            cust_name = args.get("customer_name")
+            p_method = args.get("payment_method", "CASH")
+            try:
+                pay_res = BillingService.record_payment(
+                    db=db,
+                    customer_name=cust_name,
+                    amount=amount,
+                    payment_method=p_method,
+                    notes=args.get("reference"),
+                    business_id=biz_id,
+                )
+                business_data = pay_res
+                action_type = "billing_action"
+                c_name = pay_res["customer_name"]
+                rem = pay_res["remaining_balance"]
+                status_info = f" Bill {pay_res['bill_number']} status: {pay_res['bill_status']}." if pay_res.get("bill_number") else ""
+                response_text = f"{c_name} se ₹{pay_res['amount_paid']:.2f} payment receive ho gaya ({pay_res['payment_method']}). Ab baki balance ₹{rem:.2f} hai.{status_info}"
+            except Exception as pe:
+                response_text = f"Payment record nahi ho paya: {str(pe)}"
+
+        elif tool_name == "get_customer_ledger":
+            cust_name = args.get("customer_name", "").strip()
+            ledger_res = CustomerService.get_customer_ledger(
+                db=db,
+                customer_name=cust_name,
+                business_id=biz_id,
+            )
+            business_data = ledger_res
+            action_type = "business_query"
+            response_text = ledger_res.get("summary") or f"{cust_name} ka ledger check kiya."
+
+        elif tool_name == "create_task":
+            desc = args.get("description", "").strip()
+            cust_name = args.get("customer_name")
+            task = TaskService.create_task(
+                db=db,
+                description=desc,
+                customer_name=cust_name,
+                business_id=biz_id,
+            )
+            business_data = {"task_id": str(task.id), "description": task.description}
+            action_type = "task_action"
+            response_text = f"Done. Task note kar liya hai: '{task.description}'."
+
+        elif tool_name == "list_tasks":
+            cust_name = args.get("customer_name")
+            tasks = TaskService.list_tasks(
+                db=db,
+                business_id=biz_id,
+                customer_name=cust_name,
+            )
+            business_data = {"tasks": tasks, "count": len(tasks)}
+            action_type = "task_action"
+            if tasks:
+                t_list = [t["description"] for t in tasks[:3]]
+                more = f" and {len(tasks)-3} more" if len(tasks) > 3 else ""
+                response_text = f"You have {len(tasks)} pending task(s): {'; '.join(t_list)}{more}."
+            else:
+                response_text = "Koi pending task nahi hai."
+
+        elif tool_name == "complete_task":
+            kw = args.get("task_keyword", "").strip()
+            comp_res = TaskService.complete_task(
+                db=db,
+                task_id_or_keyword=kw,
+                business_id=biz_id,
+            )
+            business_data = comp_res
+            action_type = "task_action"
+            response_text = comp_res.get("message", "Task status updated.")
+
+        elif tool_name == "save_ai_memory":
+            content = args.get("content", "").strip()
+            m_type = args.get("memory_type", "BUSINESS_PREFERENCE")
+            mem = MemoryService.store_memory(
+                db=db,
+                business_id=biz_id,
+                content=content,
+                memory_type=m_type,
+            )
+            business_data = {"memory_id": str(mem.id), "content": mem.content}
+            action_type = "memory_action"
+            response_text = f"Theek hai, maine yaad rakh liya: '{content}'."
+
+        elif tool_name == "modify_product_price":
+            prod_name = args.get("product_name", "").strip()
+            new_price = args.get("new_price", 0.0)
+            token = req.auth_token
+
+            if not SecurityService.is_token_authorized(token, biz_id):
+                response_text = (
+                    "Security Verification Required: Changing product price is a high-risk action. "
+                    "Please verify your 6-digit owner PIN in the Security tab or pass a valid auth token."
+                )
+                action_type = "security_required"
+            else:
+                prod = InventoryService.search_product(db, prod_name, biz_id)
+                if prod:
+                    old_price = float(prod.selling_price)
+                    prod.selling_price = Decimal(str(round(new_price, 2)))
+                    db.commit()
+                    db.refresh(prod)
+                    SecurityService.consume_token(token)
+                    business_data = {
+                        "product_id": str(prod.id),
+                        "name": prod.name,
+                        "old_price": old_price,
+                        "new_price": float(prod.selling_price),
+                    }
+                    action_type = "inventory_action"
+                    response_text = f"{prod.name} ki selling price ₹{old_price:.2f} se badal kar ₹{float(prod.selling_price):.2f} kar di hai."
+                else:
+                    response_text = f"Product '{prod_name}' inventory mein nahi mila."
 
         else:
             response_text = f"Executed {tool_name} successfully."

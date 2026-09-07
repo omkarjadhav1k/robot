@@ -7,11 +7,12 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 import uuid
 from app.ai.gemini_service import reason_with_gemini
+from app.ai.speech_service import synthesize_speech
 from app.config import get_settings
 from app.database.session import get_db
 from app.models.billing import Bill, BillSource
@@ -28,9 +29,13 @@ from app.services.billing_service import BillingService
 from app.services.brain_service import BrainService
 from app.services.conversation_service import ConversationService
 from app.services.customer_service import CustomerService
+from app.services.fast_path_service import FastPathService
 from app.services.inventory_service import InventoryService
+from app.services.memory_service import MemoryService
 from app.services.report_service import ReportService
 from app.services.robot_service import RobotService
+from app.services.security_service import SecurityService
+from app.services.task_service import TaskService
 from app.services.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger("business_ai_robot.voice")
@@ -109,29 +114,115 @@ def _parse_direct_hardware_intent(prompt: str) -> Optional[dict]:
 )
 async def process_voice_interaction(
     req: VoiceInteractRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> VoiceInteractResponse:
     """
     Main conversational brain orchestrator:
     1. Retrieve or initialize persistent conversation session.
-    2. Deliver immediate acknowledgement (< 200ms).
-    3. Evaluate affirmative confirmation ("haan karo") for pending multi-turn intents.
-    4. Reason with Gemini AI with tools and conversational history.
-    5. Execute authoritative PostgreSQL business services (Stock, Billing, Ledgers).
-    6. Persist message history, AI activity log, and return response.
+    2. Execute sub-second Fast-Path Engine (<50ms greetings, <100ms relays, <200ms stock/ledger).
+    3. Extract natural operational tasks/reminders.
+    4. Evaluate affirmative confirmation ("haan karo") for pending multi-turn intents.
+    5. Reason with Gemini AI with tools and conversational history.
+    6. Execute authoritative PostgreSQL business services (Stock, Billing, Ledgers, Payments).
+    7. Schedule non-blocking background TTS cache prewarm and return latency breakdown.
     """
     t_start = time.perf_counter()
+    fast_path_ms = 0.0
+    memory_ms = 0.0
+    instructions_ms = 0.0
+    gemini_ms = 0.0
+    tool_ms = 0.0
+    database_ms = 0.0
+
     robot_id = req.robot_id or settings.DEFAULT_ROBOT_ID
     prompt = req.text.strip()
     immediate_ack = _get_immediate_ack(prompt)
 
     # 1. Retrieve or create session
+    t_db_0 = time.perf_counter()
     session = ConversationService.get_or_create_session(
         db=db,
         conversation_id=req.conversation_id,
         business_id=req.business_id,
         robot_id=robot_id,
     )
+    database_ms += (time.perf_counter() - t_db_0) * 1000
+
+    # 2. Sub-second Fast-Path Engine (Greetings, Relays, Stock & Customer Balance)
+    t_fp_0 = time.perf_counter()
+    fast_res = FastPathService.evaluate(
+        db=db,
+        text=prompt,
+        robot_id=robot_id,
+        business_id=session.business_id,
+    )
+    fast_path_ms = (time.perf_counter() - t_fp_0) * 1000
+
+    if fast_res.matched:
+        ConversationService.append_message(db, session, role="user", content=prompt)
+        ConversationService.append_message(db, session, role="assistant", content=fast_res.response_text)
+
+        total_time = (time.perf_counter() - t_start) * 1000
+
+        # Asynchronous non-blocking background TTS prewarm
+        clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", fast_res.response_text).strip()
+        if background_tasks and clean_audio_text:
+            background_tasks.add_task(synthesize_speech, clean_audio_text, "hi")
+
+        import urllib.parse
+        audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or fast_res.response_text)}&lang=hi"
+
+        return VoiceInteractResponse(
+            response_text=fast_res.response_text,
+            action_type=fast_res.action_type,
+            conversation_id=session.conversation_id,
+            immediate_ack=immediate_ack,
+            state=session.state.value,
+            business_data=fast_res.business_data,
+            command_dispatched=fast_res.command_dispatched,
+            audio_url=audio_url,
+            latencies={
+                "fast_path_ms": round(fast_path_ms, 2),
+                "database_ms": round(database_ms, 2),
+                "total_ms": round(total_time, 2),
+            },
+        )
+
+    # 2b. Natural Operational Task Extraction
+    t_task_0 = time.perf_counter()
+    extracted_task = TaskService.extract_and_create_task(
+        db=db,
+        prompt=prompt,
+        business_id=session.business_id,
+    )
+    if extracted_task:
+        resp_text = extracted_task["message"]
+        ConversationService.append_message(db, session, role="user", content=prompt)
+        ConversationService.append_message(db, session, role="assistant", content=resp_text)
+
+        total_time = (time.perf_counter() - t_start) * 1000
+        clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", resp_text).strip()
+        if background_tasks and clean_audio_text:
+            background_tasks.add_task(synthesize_speech, clean_audio_text, "hi")
+
+        import urllib.parse
+        audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or resp_text)}&lang=hi"
+
+        return VoiceInteractResponse(
+            response_text=resp_text,
+            action_type="task_action",
+            conversation_id=session.conversation_id,
+            immediate_ack=immediate_ack,
+            state=session.state.value,
+            business_data=extracted_task,
+            audio_url=audio_url,
+            latencies={
+                "fast_path_ms": round((time.perf_counter() - t_task_0) * 1000, 2),
+                "database_ms": round(database_ms, 2),
+                "total_ms": round(total_time, 2),
+            },
+        )
 
     # 2. Check for Contextual Affirmation (e.g. "haan", "haan karo", "yes", "do it")
     affirmation_resolution = ConversationService.resolve_contextual_affirmation(session, prompt)
@@ -309,6 +400,16 @@ async def process_voice_interaction(
             )
 
     # 4. Multi-Turn Gemini AI Reasoning with Function Calling & Dynamic Brain Instructions
+    t_mem_0 = time.perf_counter()
+    mems = MemoryService.get_relevant_memories(db, session.business_id, query_text=prompt)
+    memory_ms = (time.perf_counter() - t_mem_0) * 1000
+
+    t_ins_0 = time.perf_counter()
+    custom_instrs = BrainService.get_instruction_strings(db, session.business_id)
+    if mems:
+        custom_instrs = list(custom_instrs) + [f"AI Memory Context: {m}" for m in mems]
+    instructions_ms = (time.perf_counter() - t_ins_0) * 1000
+
     # Fetch recent history turns
     history_records = ConversationService.get_history(db, session.id, limit=8)
     history_payload = [
@@ -316,15 +417,14 @@ async def process_voice_interaction(
         for m in history_records
     ]
 
-    custom_instrs = BrainService.get_instruction_strings(db, session.business_id)
-
     t_ai_start = time.perf_counter()
     gemini_res = await reason_with_gemini(
         user_text=prompt,
         history=history_payload,
         custom_instructions=custom_instrs,
     )
-    ai_duration = (time.perf_counter() - t_ai_start) * 1000
+    gemini_ms = (time.perf_counter() - t_ai_start) * 1000
+    ai_duration = gemini_ms
 
     response_text = ""
     action_type = "conversation"
@@ -333,6 +433,7 @@ async def process_voice_interaction(
 
     # 5. Handle Tool / Function Call
     if gemini_res.function_call:
+        t_tool_0 = time.perf_counter()
         fn_name = gemini_res.function_call.get("name")
         args = gemini_res.function_call.get("args", {})
         logger.info("Handling tool call: %s with args: %s", fn_name, args)
@@ -756,8 +857,127 @@ async def process_voice_interaction(
             response_text = f"Blinking the status LED {times} times."
             action_type = "hardware_action"
 
+        elif fn_name == "record_payment":
+            amount = float(args.get("amount", 0.0))
+            cust_name = args.get("customer_name")
+            p_method = args.get("payment_method", "CASH")
+            ref = args.get("reference")
+            try:
+                pay_res = BillingService.record_payment(
+                    db=db,
+                    customer_name=cust_name,
+                    amount=amount,
+                    payment_method=p_method,
+                    notes=ref,
+                    business_id=session.business_id,
+                )
+                business_data = pay_res
+                action_type = "billing_action"
+                c_name = pay_res["customer_name"]
+                rem = pay_res["remaining_balance"]
+                status_info = f" Bill {pay_res['bill_number']} status: {pay_res['bill_status']}." if pay_res.get("bill_number") else ""
+                response_text = f"{c_name} se ₹{pay_res['amount_paid']:.2f} payment receive ho gaya ({pay_res['payment_method']}). Ab baki balance ₹{rem:.2f} hai.{status_info}"
+            except Exception as pe:
+                response_text = f"Payment record nahi ho paya: {str(pe)}"
+
+        elif fn_name == "get_customer_ledger":
+            cust_name = args.get("customer_name", "").strip()
+            ledger_res = CustomerService.get_customer_ledger(
+                db=db,
+                customer_name=cust_name,
+                business_id=session.business_id,
+            )
+            business_data = ledger_res
+            action_type = "business_query"
+            response_text = ledger_res.get("summary") or f"{cust_name} ka ledger check kiya."
+
+        elif fn_name == "create_task":
+            desc = args.get("description", "").strip()
+            cust_name = args.get("customer_name")
+            task = TaskService.create_task(
+                db=db,
+                description=desc,
+                customer_name=cust_name,
+                business_id=session.business_id,
+            )
+            business_data = {"task_id": str(task.id), "description": task.description}
+            action_type = "task_action"
+            response_text = f"Done. Task note kar liya hai: '{task.description}'."
+
+        elif fn_name == "list_tasks":
+            cust_name = args.get("customer_name")
+            tasks = TaskService.list_tasks(
+                db=db,
+                business_id=session.business_id,
+                customer_name=cust_name,
+            )
+            business_data = {"tasks": tasks, "count": len(tasks)}
+            action_type = "task_action"
+            if tasks:
+                t_list = [t["description"] for t in tasks[:3]]
+                more = f" and {len(tasks)-3} more" if len(tasks) > 3 else ""
+                response_text = f"You have {len(tasks)} pending task(s): {'; '.join(t_list)}{more}."
+            else:
+                response_text = "Koi pending task nahi hai."
+
+        elif fn_name == "complete_task":
+            kw = args.get("task_keyword", "").strip()
+            comp_res = TaskService.complete_task(
+                db=db,
+                task_id_or_keyword=kw,
+                business_id=session.business_id,
+            )
+            business_data = comp_res
+            action_type = "task_action"
+            response_text = comp_res.get("message", "Task status updated.")
+
+        elif fn_name == "save_ai_memory":
+            content = args.get("content", "").strip()
+            m_type = args.get("memory_type", "BUSINESS_PREFERENCE")
+            mem = MemoryService.store_memory(
+                db=db,
+                business_id=session.business_id,
+                content=content,
+                memory_type=m_type,
+            )
+            business_data = {"memory_id": str(mem.id), "content": mem.content}
+            action_type = "memory_action"
+            response_text = f"Theek hai, maine yaad rakh liya: '{content}'."
+
+        elif fn_name == "modify_product_price":
+            prod_name = args.get("product_name", "").strip()
+            new_price = args.get("new_price", 0.0)
+            token = req.auth_token
+
+            if not SecurityService.is_token_authorized(token, session.business_id):
+                response_text = (
+                    "Security Verification Required: Changing product price is a high-risk action. "
+                    "Please provide your 6-digit owner PIN to proceed."
+                )
+                action_type = "security_required"
+            else:
+                prod = InventoryService.search_product(db, prod_name, session.business_id)
+                if prod:
+                    old_price = float(prod.selling_price)
+                    prod.selling_price = Decimal(str(round(new_price, 2)))
+                    db.commit()
+                    db.refresh(prod)
+                    SecurityService.consume_token(token)
+                    business_data = {
+                        "product_id": str(prod.id),
+                        "name": prod.name,
+                        "old_price": old_price,
+                        "new_price": float(prod.selling_price),
+                    }
+                    action_type = "inventory_action"
+                    response_text = f"{prod.name} ki selling price ₹{old_price:.2f} se badal kar ₹{float(prod.selling_price):.2f} kar di hai."
+                else:
+                    response_text = f"Product '{prod_name}' inventory mein nahi mila."
+
         else:
             response_text = f"Tool '{fn_name}' executed."
+
+        tool_ms = (time.perf_counter() - t_tool_0) * 1000
 
     else:
         # Natural conversational text from Gemini
@@ -796,6 +1016,10 @@ async def process_voice_interaction(
     clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", clean_display_text or response_text).strip()
     audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or clean_display_text or response_text)}&lang=hi"
 
+    # Non-blocking background TTS cache prewarm
+    if background_tasks and clean_audio_text:
+        background_tasks.add_task(synthesize_speech, clean_audio_text, "hi")
+
     return VoiceInteractResponse(
         response_text=clean_display_text or response_text,
         action_type=action_type,
@@ -807,6 +1031,12 @@ async def process_voice_interaction(
         audio_url=audio_url,
         latencies={
             "ai_ms": round(ai_duration, 2),
+            "fast_path_ms": round(fast_path_ms, 2),
+            "memory_ms": round(memory_ms, 2),
+            "instructions_ms": round(instructions_ms, 2),
+            "gemini_ms": round(gemini_ms, 2),
+            "tool_ms": round(tool_ms, 2),
+            "database_ms": round(database_ms, 2),
             "total_ms": round(total_time, 2),
         },
     )

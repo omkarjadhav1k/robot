@@ -79,14 +79,15 @@ class RobotService:
         action: str,
         params: Optional[Dict[str, Any]] = None,
         priority: int = 1,
+        business_id: Optional[Any] = None,
     ) -> RobotCommand:
         """Create a new command row in PostgreSQL with status PENDING."""
-        robot = RobotService.get_or_create_robot(db, robot_id)
+        robot = RobotService.get_or_create_robot(db, robot_id, business_id=business_id)
         cmd_id = f"cmd_{uuid.uuid4().hex[:12]}"
         cmd = RobotCommand(
             command_id=cmd_id,
             robot_id=robot.id,
-            business_id=robot.business_id,
+            business_id=business_id or robot.business_id,
             action=action,
             payload=params or {},
             status=CommandStatus.PENDING,

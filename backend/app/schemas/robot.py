@@ -89,6 +89,7 @@ class VoiceInteractRequest(BaseModel):
     robot_id: str = Field(default="ROBOT-001", description="Target robot ID")
     conversation_id: Optional[str] = Field(default=None, description="Persistent conversation session ID")
     business_id: Optional[str] = Field(default=None, description="Business tenant ID")
+    auth_token: Optional[str] = Field(default=None, description="Temporary owner authorization token for high-risk actions")
 
 
 class VoiceInteractResponse(BaseModel):

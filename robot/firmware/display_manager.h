@@ -42,7 +42,7 @@ public:
                 _oled.setTextSize(1);
                 _oled.setTextColor(SSD1306_WHITE);
                 _oled.setCursor(0, 0);
-                _oled.println(F("BUSINESS AI ROBOT"));
+                _oled.println(F("MAX AI EXECUTIVE"));
                 _oled.display();
             }
 #endif
@@ -71,7 +71,7 @@ public:
             _oled.clearDisplay();
             _oled.setTextSize(1);
             _oled.setCursor(0, 0);
-            _oled.println(F("BUSINESS AI ROBOT"));
+            _oled.println(F("MAX AI EXECUTIVE"));
             _oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
 
             _oled.setTextSize(2);
