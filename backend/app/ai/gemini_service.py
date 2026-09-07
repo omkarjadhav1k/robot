@@ -270,15 +270,12 @@ async def reason_with_gemini(
 
     clean_key = key.strip("\"' \t\r\n")
 
-    # Ensure fastest models are always tried first to guarantee sub-second robot responsiveness.
-    # Never prioritize heavy models like gemini-3.7-flash ahead of flash-lite.
-    fast_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+    # Ensure fastest, most stable models are prioritized for instant sub-2s robot responsiveness.
+    fast_models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest"]
     if settings.GEMINI_MODEL and settings.GEMINI_MODEL not in fast_models and "3.7" not in settings.GEMINI_MODEL:
         models_to_try = [settings.GEMINI_MODEL] + [m for m in fast_models if m != settings.GEMINI_MODEL]
     else:
         models_to_try = list(fast_models)
-    if "gemini-3.7-flash" not in models_to_try:
-        models_to_try.append("gemini-3.7-flash")
 
     # Build active system prompt including any learned brain instructions
     active_system_prompt = system_instruction or SYSTEM_INSTRUCTION
@@ -322,7 +319,7 @@ async def reason_with_gemini(
     }
 
     last_err = "No response"
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=4.0) as client:
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
             try:

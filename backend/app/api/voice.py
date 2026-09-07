@@ -791,11 +791,13 @@ async def process_voice_interaction(
     db.commit()
 
     import urllib.parse
-    clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", response_text).strip()
-    audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or response_text)}&lang=hi"
+    # Strip high unicode emojis that corrupt 115200 baud Serial and OLED displays
+    clean_display_text = re.sub(r'[\U00010000-\U0010ffff]', '', response_text).strip()
+    clean_audio_text = re.sub(r"[^\w\s\.,\?!₹\-']", "", clean_display_text or response_text).strip()
+    audio_url = f"/api/v1/voice/audio/tts?text={urllib.parse.quote(clean_audio_text or clean_display_text or response_text)}&lang=hi"
 
     return VoiceInteractResponse(
-        response_text=response_text,
+        response_text=clean_display_text or response_text,
         action_type=action_type,
         conversation_id=session.conversation_id,
         immediate_ack=immediate_ack,

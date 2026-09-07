@@ -270,9 +270,9 @@ public:
 
         Serial.println();
         Serial.println(F("--------------------------------------------------"));
-        Serial.print(F("👤 YOU: "));
+        Serial.print(F("[YOU]: "));
         Serial.println(prompt);
-        Serial.println(F("⏳ Thinking with Gemini AI..."));
+        Serial.println(F("[AI THINKING] Reasoning with Gemini..."));
         _led->setPattern(PATTERN_COMMAND_EXEC);
 
         HTTPClient http;
@@ -282,7 +282,7 @@ public:
 
         _beginHttp(http, sec, plain, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(30000); // 30s timeout for cloud LLM reasoning
+        http.setTimeout(45000); // 45s timeout for cloud LLM reasoning and cold starts
 
         // Escape JSON quotes
         String cleanPrompt = prompt;
@@ -311,11 +311,11 @@ public:
             // Extract TTS audio stream URL
             String audioUrl = _extractJsonString(respBody, "audio_url");
             if (audioUrl.length() > 0) {
-                Serial.printf("🔊 [SPEAKER AUDIO READY]: %s%s\n", BACKEND_BASE_URL, audioUrl.c_str());
+                Serial.printf("[SPEAKER AUDIO READY]: %s%s\n", BACKEND_BASE_URL, audioUrl.c_str());
             }
 
             Serial.println();
-            Serial.print(F("🤖 [GEMINI AI]: "));
+            Serial.print(F("[ROBOT AI]: "));
             Serial.println(aiResponse);
             Serial.println(F("--------------------------------------------------"));
             _display->showStatus("GEMINI REPLIED", aiResponse, _relays->getRelaysJson());
@@ -330,11 +330,11 @@ public:
                 }
             }
         } else {
-            Serial.printf("❌ Backend chat error (HTTP %d)\n", httpCode);
+            Serial.printf("[ERROR] Backend chat error (HTTP %d)\n", httpCode);
         }
         _endHttp(http, sec, plain);
         _led->setPattern(PATTERN_ONLINE);
-        Serial.println(F("\n💬 Type next question or command:"));
+        Serial.println(F("\nType next question or command:"));
     }
 };
 
