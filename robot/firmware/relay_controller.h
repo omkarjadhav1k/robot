@@ -55,6 +55,11 @@ public:
         }
     }
 
+    void setAll(bool state) {
+        setAllRelays(state);
+    }
+
+
     bool getRelayState(int relayNum) const {
         if (relayNum < 1 || relayNum > 4) return false;
         return _states[relayNum - 1];

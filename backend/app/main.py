@@ -98,6 +98,9 @@ async def lifespan(app: FastAPI):
                         is_active=True,
                     ))
                     db.commit()
+                elif existing_p.current_stock <= Decimal("0.00"):
+                    existing_p.current_stock = p_stock
+                    db.commit()
 
             # Ensure sample customers Rahul & Amit exist with WhatsApp numbers
             from app.models.billing import Customer

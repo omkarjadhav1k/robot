@@ -10,7 +10,8 @@ enum LedPattern {
     PATTERN_CONNECTING,      // Fast flash (150ms)
     PATTERN_ONLINE,          // Solid ON
     PATTERN_COMMAND_EXEC,    // Rapid double-blink
-    PATTERN_ERROR            // Slow blink (1000ms)
+    PATTERN_ERROR,           // Slow blink (1000ms)
+    PATTERN_PROVISIONING     // SoftAP Provisioning pulse
 };
 
 class StatusLED {
@@ -80,6 +81,17 @@ public:
                     _lastToggle = now;
                     _state = !_state;
                     digitalWrite(_pin, _state ? HIGH : LOW);
+                }
+                break;
+
+            case PATTERN_PROVISIONING:
+                {
+                    unsigned long cycle = (now - _lastToggle) % 800;
+                    bool active = (cycle < 100) || (cycle >= 200 && cycle < 300);
+                    if (_state != active) {
+                        _state = active;
+                        digitalWrite(_pin, _state ? HIGH : LOW);
+                    }
                 }
                 break;
 

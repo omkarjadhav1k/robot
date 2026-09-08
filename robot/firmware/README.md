@@ -1,31 +1,36 @@
-# 🤖 ESP32 Robot Firmware — Quick Flashing Guide
+# 🤖 ESP32 Robot Firmware — Standalone Exhibition & Production Guide
 
-This directory contains the production firmware for your **ESP32 DevKit V1**.
+This directory contains the standalone production firmware for your **ESP32 DevKit V1** powering **MAX — Manager AI eXecutive**.
 
-It connects to your local Wi-Fi, registers with your FastAPI backend, reports real-time heartbeats and Wi-Fi RSSI, listens for hardware commands, and controls GPIO pins (relays & onboard status LED).
+In production mode, the robot is **100% standalone**:
+- **Zero Laptop Required**: Power ON the robot, and it connects directly to the Render cloud backend via Wi-Fi or your mobile phone hotspot.
+- **Automated Boot Sequence**: `BOOTING` ➔ `WIFI_CONNECTING` ➔ `WIFI_CONNECTED` ➔ `BACKEND_CONNECTING` ➔ `HEALTH CHECK OK` ➔ `READY` ➔ Announces *"Namaste! Main ready hoon."*
+- **No-Laptop Wi-Fi Provisioning**: If you move to a new exhibition venue or switch Wi-Fi hotspots, the robot automatically starts a setup hotspot (`MAX-Robot-Setup`). Connect your phone, open `http://192.168.4.1`, select your network, and the robot reconnects and saves credentials permanently to ESP32 NVS.
+- **Resilient Reconnection**: Automatically recovers from temporary network hiccups without freezing or continuous reboot loops. Offline relay controls continue to work even if the internet briefly drops.
 
 ---
 
-## ⚙️ Step 1: Configure Your Network & Backend URL
+## ⚙️ Step 1: Choose Environment Mode in `config.h`
 
-Open [`config.h`](file:///c:/project/Robot/robot/firmware/robot_firmware/config.h) and set:
+Open [`config.h`](file:///c:/project/Robot/robot/firmware/robot_firmware/config.h):
 
 ```cpp
-// 1. Your Wi-Fi network (Must be 2.4 GHz)
-#define WIFI_SSID           "Your_WiFi_Name"
-#define WIFI_PASSWORD       "Your_WiFi_Password"
-
-// 2. Your Laptop's local IP address
-// Run 'ipconfig' in terminal to find your IPv4 address (e.g., 192.168.1.15)
-#define BACKEND_BASE_URL    "http://192.168.1.15:8000"
+// Set to TRUE for Exhibition / Standalone Cloud Mode (No laptop needed)
+// Set to FALSE for Local PC Development (192.168.1.33:8000)
+#define USE_PRODUCTION_CLOUD    true
 ```
 
-> [!WARNING]
-> Do NOT use `localhost` or `127.0.0.1` for `BACKEND_BASE_URL` because the ESP32 is a separate physical device on your local Wi-Fi network.
+When `USE_PRODUCTION_CLOUD` is `true`:
+- **Backend URL**: `https://business-ai-robot-backend.onrender.com`
+- **Backend WebSocket**: `wss://business-ai-robot-backend.onrender.com/api/v1/voice/ws`
+- **Transport**: HTTPS with secure TLS and automatic Render warm-up handling.
+
+When `USE_PRODUCTION_CLOUD` is `false`:
+- **Backend URL**: `http://192.168.1.33:8000` (Your local PC backend)
 
 ---
 
-## 🔌 Step 2: Upload to ESP32
+## 🔌 Step 2: Upload Firmware to ESP32
 
 ### Option A: Using Arduino IDE (Recommended & Easiest)
 1. Open **Arduino IDE**.
@@ -38,8 +43,8 @@ Open [`config.h`](file:///c:/project/Robot/robot/firmware/robot_firmware/config.
 6. Open **Tools -> Serial Monitor** and set baud rate to **115200**.
 
 > [!TIP]
-> If the upload stops at `Connecting........_____.....`:
-> Press and hold the **BOOT** button on your ESP32 until the upload progress percentage begins, then release it.
+> If upload stops at `Connecting........_____.....`:
+> Press and hold the **BOOT** button on your ESP32 until upload progress percentage begins, then release it.
 
 ### Option B: Using PlatformIO
 From terminal or VS Code PlatformIO extension:
@@ -51,48 +56,40 @@ pio device monitor
 
 ---
 
-## 💡 Onboard Status LED Indications (GPIO 2)
+## 📱 Exhibition Wi-Fi Setup (Without Any Laptop)
 
-| LED Pattern | Meaning |
-| :--- | :--- |
-| **Fast Blinking (150ms)** | Connecting to Wi-Fi... |
-| **Solid Blue ON** | Connected to Wi-Fi & Central Brain Online! |
-| **Rapid Double Flash** | Executing hardware command (Relay/LED) |
-| **Slow Blink (1s)** | Wi-Fi connection lost / retrying |
+When you take the robot to an exhibition venue:
+1. **Turn ON the Robot** (via USB power bank or 5V DC adapter).
+2. If the saved Wi-Fi is not reachable, the robot waits 15 seconds, then starts its own setup hotspot:
+   - **Wi-Fi SSID**: `MAX-Robot-Setup`
+   - **Password**: `12345678`
+3. **On your phone**:
+   - Connect Wi-Fi to `MAX-Robot-Setup`.
+   - Open browser to: `http://192.168.4.1`
+   - Select your exhibition Wi-Fi or turn on your mobile phone hotspot and enter the password.
+   - Click **Save & Connect Robot**.
+4. The robot saves the credentials to internal non-volatile memory (NVS), connects to the hotspot, verifies the Render cloud backend, and announces:
+   `"Namaste! Main ready hoon."`
+5. You can now talk to the robot directly!
 
 ---
 
-## 🚚 Drop-In Hardware Upgrade (When Parcels Arrive)
+## 💡 Onboard Status LED Indications (GPIO 2)
 
-When your hardware arrives, wire the modules to these pre-configured pins:
+| LED Pattern | Status | Meaning |
+| :--- | :--- | :--- |
+| **Fast Flash (150ms)** | `WIFI_CONNECTING` / `BACKEND_CONNECTING` | Connecting to Wi-Fi or Cloud Backend |
+| **Double Pulse (800ms)**| `PROVISIONING` | Hotspot active (`MAX-Robot-Setup`). Connect phone! |
+| **Solid Blue ON** | `READY` | Connected to Render Cloud, health OK, ready to talk |
+| **Rapid Double Flash** | `COMMAND_EXEC` | Executing relay or fast-path hardware action |
+| **Slow Blink (1000ms)** | `ERROR` / `RECONNECTING` | Waiting for network recovery |
 
-1. **INMP441 I2S Microphone**:
-   - `SCK` ➔ GPIO 27
-   - `WS` ➔ GPIO 14
-   - `SD` ➔ GPIO 34
-   - `VDD` ➔ 3.3V, `GND` ➔ GND, `L/R` ➔ GND
+---
 
-2. **MAX98357A I2S Amplifier**:
-   - `BCLK` ➔ GPIO 27
-   - `LRC` ➔ GPIO 14
-   - `DIN` ➔ GPIO 13
-   - `VIN` ➔ 5V, `GND` ➔ GND
+## 💬 Serial Monitor Testing & Debug Commands
 
-3. **0.96" SSD1306 OLED (I2C)**:
-   - `SDA` ➔ GPIO 21
-   - `SCL` ➔ GPIO 22
-   - `VCC` ➔ 3.3V, `GND` ➔ GND
-
-4. **4-Channel 5V Relay Module**:
-   - `IN1` ➔ GPIO 16
-   - `IN2` ➔ GPIO 17
-   - `IN3` ➔ GPIO 18
-   - `IN4` ➔ GPIO 19
-   - `VCC` ➔ 5V, `GND` ➔ GND
-
-Then, in [`config.h`](file:///c:/project/Robot/robot/firmware/robot_firmware/config.h), simply change:
-```cpp
-#define VIRTUAL_AUDIO_MODE    false  // Now uses INMP441 + MAX98357A!
-#define VIRTUAL_DISPLAY_MODE  false  // Now uses physical SSD1306 OLED!
-```
-and re-upload!
+If connected to a PC for monitoring:
+- Type questions: `Tata Salt kitna hai?`, `Is week ki strategy bana.`, `Light on`
+- Type `status` to print IP, RSSI, Cloud Backend URL, and uptime.
+- Type `reset wifi` to clear saved Wi-Fi credentials and trigger the phone setup hotspot.
+- Type `wifi <SSID> <PASSWORD>` to switch Wi-Fi directly.

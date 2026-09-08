@@ -20,6 +20,7 @@ void setup() {
     Serial.println(F("=================================================="));
     Serial.println(F(" 🤖 MAX — MANAGER AI EXECUTIVE HARDWARE CONTROLLER"));
     Serial.printf( F("    Device ID: %s | Firmware: v%s\n"), ROBOT_ID, FIRMWARE_VERSION);
+    Serial.printf( F("    Mode:      %s\n"), USE_PRODUCTION_CLOUD ? "PRODUCTION (Render Cloud)" : "DEVELOPMENT (Local PC)");
     Serial.println(F("=================================================="));
 
     // 2. Initialize Hardware Peripherals
@@ -27,19 +28,20 @@ void setup() {
     relayController.begin();
     displayManager.begin();
 
-    // 3. Connect to Wi-Fi and Central Brain Backend
+    // 3. Connect to Wi-Fi, Verify Health, and Enter READY State
     networkClient.begin();
 
     Serial.println();
     Serial.println(F("=================================================="));
-    Serial.println(F(" 💬 SERIAL MONITOR CHAT ACTIVE!"));
+    Serial.println(F(" 💬 MAX ROBOT ACTIVE & READY FOR VOICE/TEXT!"));
     Serial.println(F(" Type any question or command here & press Enter."));
     Serial.println(F(" Examples:"));
-    Serial.println(F("   • What is 50 * 12?"));
-    Serial.println(F("   • Who are you?"));
-    Serial.println(F("   • Turn on relay 1"));
-    Serial.println(F("   • Turn off relay 1"));
-    Serial.println(F("   • Blink the LED"));
+    Serial.println(F("   • Tata Salt kitna hai?"));
+    Serial.println(F("   • Is week ki strategy bana."));
+    Serial.println(F("   • Light on / Fan off"));
+    Serial.println(F("   • Kal wali strategy batao."));
+    Serial.println(F("   • status (view connection & IP details)"));
+    Serial.println(F("   • reset wifi (start phone hotspot setup)"));
     Serial.println(F("=================================================="));
     Serial.println(F("\n💬 Type a message:"));
 }

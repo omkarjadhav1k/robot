@@ -9,26 +9,77 @@
 
 // --- Robot Identity ---
 #define ROBOT_ID            "ROBOT-001"
-#define FIRMWARE_VERSION    "1.0.0"
+#define FIRMWARE_VERSION    "1.1.0"
 
-// --- Wi-Fi Credentials (CONFIGURE FOR YOUR NETWORK) ---
-// Note: ESP32 only supports 2.4 GHz Wi-Fi networks
-#define WIFI_SSID           "Airtel_yash_8260"
-#define WIFI_PASSWORD       "Kavni@143"
+// ==============================================================================
+// 🌐 Dual Environment Mode Toggle
+// Set to TRUE for Exhibition / Standalone Cloud Mode (no laptop required!)
+// Set to FALSE for Local PC Development Mode (192.168.1.33:8000)
+// ==============================================================================
+#define USE_PRODUCTION_CLOUD    true
 
-// --- Central Brain Backend URL (Live Cloud Backend on Render) ---
-#define BACKEND_BASE_URL    "https://business-ai-robot-backend.onrender.com"
+#if USE_PRODUCTION_CLOUD
+  #define BACKEND_BASE_URL      "https://business-ai-robot-backend.onrender.com"
+  #define BACKEND_WS_URL        "wss://business-ai-robot-backend.onrender.com/api/v1/voice/ws"
+  #define BACKEND_HOST          "business-ai-robot-backend.onrender.com"
+  #define BACKEND_PORT          443
+  #define USE_HTTPS             true
+#else
+  #define BACKEND_BASE_URL      "http://192.168.1.33:8000"
+  #define BACKEND_WS_URL        "ws://192.168.1.33:8000/api/v1/voice/ws"
+  #define BACKEND_HOST          "192.168.1.33"
+  #define BACKEND_PORT          8000
+  #define USE_HTTPS             false
+#endif
+
+// --- Wi-Fi Credentials & SoftAP Provisioning ---
+// Stored in ESP32 non-volatile storage (NVS Preferences).
+// If no credentials saved or connection fails, starts SoftAP hotspot for phone setup!
+#define WIFI_SSID_DEFAULT       "Airtel_yash_8260"
+#define WIFI_PASSWORD_DEFAULT   "Kavni@143"
+
+// SoftAP Hotspot Configuration (Connect phone to this if venue Wi-Fi changes)
+#define AP_SSID                 "MAX-Robot-Setup"
+#define AP_PASSWORD             "12345678"
+#define WIFI_CONNECT_TIMEOUT_MS 15000  // 15 seconds to attempt Wi-Fi before opening hotspot
+
+// --- Startup Speech Announcement ---
+#define STARTUP_SPEECH_TEXT     "Namaste! Main ready hoon."
+
+// --- Robot Startup States ---
+enum RobotStartupState {
+    STATE_BOOTING,
+    STATE_WIFI_CONNECTING,
+    STATE_WIFI_CONNECTED,
+    STATE_PROVISIONING,
+    STATE_BACKEND_CONNECTING,
+    STATE_BACKEND_CONNECTED,
+    STATE_READY,
+    STATE_RECONNECTING,
+    STATE_ERROR
+};
+
+// --- Real-Time Audio Streaming (Section 26) ---
+#define PCM_SAMPLE_RATE         16000  // 16 kHz
+#define PCM_CHANNELS            1      // Mono
+#define PCM_BITS_PER_SAMPLE     16     // 16-bit signed PCM
+#define PCM_FRAME_DURATION_MS   20     // 20 ms frames
+#define PCM_SAMPLES_PER_FRAME   320    // 320 samples
+#define PCM_FRAME_BYTES         640    // 320 samples * 2 bytes = 640 bytes/frame
+#define BARGE_IN_ENERGY_THRESH  1500   // Mic RMS threshold triggering hardware barge-in
 
 // --- Timing & Intervals ---
 #define HEARTBEAT_INTERVAL_MS   6000   // Send heartbeat & poll commands every 6s
 #define WIFI_RETRY_INTERVAL_MS  5000   // Check Wi-Fi every 5s if disconnected
 #define SERIAL_BAUD_RATE        115200
 
-// --- HTTP Timeouts (milliseconds) ---
+// --- HTTP Timeouts & Intervals (milliseconds) ---
 #define HTTP_TIMEOUT_HEARTBEAT  10000  // 10s for heartbeat POST
 #define HTTP_TIMEOUT_COMMAND    10000  // 10s for command polling
-#define HTTP_TIMEOUT_CHAT       60000  // 60s for voice/chat (Render cold start + Gemini reasoning)
+#define HTTP_TIMEOUT_CHAT       60000  // 60s for voice/chat (Render cold start + response)
 #define HTTP_TIMEOUT_ACK        10000  // 10s for command ACK
+#define HTTP_TIMEOUT_HEALTH     15000  // 15s per health check probe
+#define HEALTH_RETRY_INTERVAL_MS 4000  // 4s between health retries during warm-up
 
 // --- Hardware Abstraction & Virtual Emulation Modes ---
 // Set to TRUE while waiting for physical parcels to arrive.

@@ -145,6 +145,19 @@ class FastPathService:
                 raw_prod = m.group(1).strip()
                 # Exclude broad conversational phrases
                 if raw_prod and len(raw_prod) > 2 and raw_prod not in ["aaj", "kya", "bhai", "hello", "sale", "bill"]:
+                    from app.models.product import Product
+                    # Disambiguation guard: If multiple distinct variants exist, do not fast-path; yield to EntityExtractor
+                    all_matches = db.query(Product).filter(
+                        Product.is_active == True,
+                        Product.name.ilike(f"%{raw_prod}%"),
+                    )
+                    if business_id:
+                        all_matches = all_matches.filter(Product.business_id == business_id)
+                    distinct_names = list(dict.fromkeys([p.name for p in all_matches.all()]))
+                    if len(distinct_names) > 1:
+                        # Ambiguous: delegate to EntityExtractor for Section 21 disambiguation
+                        break
+
                     stock_res = InventoryService.get_stock(db, raw_prod, business_id)
                     if stock_res.get("found"):
                         stk = stock_res["current_stock"]

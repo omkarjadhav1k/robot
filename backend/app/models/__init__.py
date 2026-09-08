@@ -35,6 +35,7 @@ from app.models.robot_command import AIActivity, CommandStatus, RobotCommand
 from app.models.ai_memory import AIMemory
 from app.models.security import OwnerSecurity, SecurityEvent
 from app.models.task import AITask, TaskStatus, TaskType
+from app.models.task_job import JobStatus, TaskJob, TaskJobEvent, TaskJobResult
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -43,6 +44,10 @@ __all__ = [
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
     "Business",
+    "TaskJob",
+    "TaskJobResult",
+    "TaskJobEvent",
+    "JobStatus",
     "User",
     "UserRole",
     "RobotDevice",
