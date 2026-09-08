@@ -87,3 +87,40 @@ async def test_hybrid_engine_casual_language_prompts(db_session: Session):
         history=[]
     )
     assert "bill" in r4.response_text.lower() or "item" in r4.response_text.lower() or "customer" in r4.response_text.lower()
+
+
+def test_sugar_price_typo_and_idiom(client: TestClient, db_session: Session):
+    """Verify 'suger' typo resolves to Sugar with price, and 'ek kam karo' does not crash."""
+    biz = db_session.query(Business).first()
+    sugar = Product(
+        name="Sugar",
+        unit="kg",
+        selling_price=Decimal("42.00"),
+        purchase_price=Decimal("38.00"),
+        current_stock=Decimal("9.00"),
+        minimum_stock=Decimal("5.00"),
+        business_id=biz.id,
+        is_active=True,
+    )
+    db_session.add(sugar)
+    db_session.commit()
+
+    # 1. Phonetic voice typo 'suger' + price query
+    resp1 = client.post(
+        "/voice/interact",
+        json={"text": "1 kg suger ki price kya hai", "robot_id": "ROBOT-001"},
+    )
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    # Response must mention Sugar and price 42
+    assert "Sugar" in data1["response_text"]
+    assert "42" in data1["response_text"]
+
+    # 2. Idiom 'ek kam karo to online suger ka rate kya chal raha hai check karna'
+    resp2 = client.post(
+        "/voice/interact",
+        json={"text": "ek kam karo to online suger ka rate kya chal raha hai check karna", "robot_id": "ROBOT-001"},
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["response_text"]  # must return valid response without 500

@@ -234,7 +234,7 @@ class InventoryService:
             stock = current_stock
         clean_name = name.strip()
         if not clean_name:
-            raise ValueError("Product name cannot be empty.")
+            return {"success": False, "found": False, "message": "Product ka naam empty nahi ho sakta."}
 
         if not business_id:
             default_biz = db.query(Business).first()
@@ -333,7 +333,12 @@ class InventoryService:
         """Atomically deduct stock for a product, recording a SALE transaction audit."""
         clean_name = product_name.strip()
         if not clean_name:
-            raise ValueError("Product name cannot be empty.")
+            return {
+                "success": False,
+                "found": False,
+                "product_name": "",
+                "message": "Kis product ka stock kam karna hai? Kripya product ka naam bataiye.",
+            }
 
         product = InventoryService.search_product(db, clean_name, business_id)
         if not product:
@@ -395,7 +400,12 @@ class InventoryService:
         """Atomically add stock for an existing product or register new with added stock."""
         clean_name = product_name.strip()
         if not clean_name:
-            raise ValueError("Product name cannot be empty.")
+            return {
+                "success": False,
+                "found": False,
+                "product_name": "",
+                "message": "Kis product ka stock add karna hai? Kripya product ka naam bataiye.",
+            }
 
         product = InventoryService.search_product(db, clean_name, business_id)
         dec_qty = Decimal(str(quantity))

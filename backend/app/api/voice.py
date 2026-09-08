@@ -117,15 +117,11 @@ def _parse_direct_hardware_intent(prompt: str) -> Optional[dict]:
     return None
 
 
-@router.post(
-    "/interact",
-    response_model=VoiceInteractResponse,
-    summary="Process voice/text interaction and dispatch robot actions",
-)
-async def process_voice_interaction(
+async def _process_voice_interaction_impl(
     req: VoiceInteractRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: Session,
+    t_start: Optional[float] = None,
 ) -> VoiceInteractResponse:
     """
     Main conversational brain orchestrator:
@@ -137,7 +133,7 @@ async def process_voice_interaction(
     6. Execute authoritative PostgreSQL business services (Stock, Billing, Ledgers, Payments).
     7. Schedule non-blocking background TTS cache prewarm and return latency breakdown.
     """
-    t_start = time.perf_counter()
+    t_start = t_start or time.perf_counter()
     fast_path_ms = 0.0
     memory_ms = 0.0
     instructions_ms = 0.0
@@ -595,12 +591,18 @@ async def process_voice_interaction(
 
     if fn_name:
         pass
+    elif intent_match.intent in ("GET_STOCK", "GET_PRICE") and not entities.product:
+        intent_match.intent = "UNKNOWN"
+        fn_name = None
     elif intent_match.intent == "GET_STOCK":
         fn_name = "check_stock"
         args = {"product_name": entities.product or ""}
+    elif intent_match.intent == "REDUCE_STOCK" and not entities.product and not (state_ctx and state_ctx.last_product):
+        intent_match.intent = "UNKNOWN"
+        fn_name = None
     elif intent_match.intent == "REDUCE_STOCK":
         fn_name = "reduce_stock"
-        args = {"product_name": entities.product or "", "quantity": entities.quantity or 1.0}
+        args = {"product_name": entities.product or (state_ctx.last_product if state_ctx else ""), "quantity": entities.quantity or 1.0}
     elif intent_match.intent == "GET_PRICE":
         fn_name = "check_stock"
         args = {"product_name": entities.product or ""}
@@ -691,7 +693,11 @@ async def process_voice_interaction(
                 if stock_info.get("found"):
                     stk = stock_info['current_stock']
                     stk_str = str(int(stk)) if stk % 1 == 0 else f"{stk:.1f}"
-                    response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
+                    price = stock_info.get("selling_price", 0.0)
+                    if intent_match.intent == "GET_PRICE" or any(w in prompt.lower() for w in ["rate", "price", "bhaav", "kimat", "kitne ka"]):
+                        response_text = f"{stock_info['name']} ka rate ₹{price:.2f} per {stock_info['unit']} hai, aur abhi {stk_str} {stock_info['unit']} available hain."
+                    else:
+                        response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
                     if stock_info.get("is_low_stock"):
                         response_text += " Dhyaan rahe, stock kam ho raha hai!"
                 else:
@@ -699,19 +705,23 @@ async def process_voice_interaction(
 
         elif fn_name == "reduce_stock":
             product_name = args.get("product_name", "").strip()
-            try:
-                qty = float(args.get("quantity", 1.0))
-            except Exception:
-                qty = 1.0
-            res = InventoryService.reduce_or_sell_stock(
-                db=db,
-                product_name=product_name,
-                quantity=qty,
-                business_id=session.business_id,
-            )
-            business_data = res
-            action_type = "business_query"
-            response_text = res["message"]
+            if not product_name:
+                response_text = "Kis product ka stock kam karna hai? Kripya item ka naam aur quantity bataiye."
+                action_type = "conversation"
+            else:
+                try:
+                    qty = float(args.get("quantity", 1.0))
+                except Exception:
+                    qty = 1.0
+                res = InventoryService.reduce_or_sell_stock(
+                    db=db,
+                    product_name=product_name,
+                    quantity=qty,
+                    business_id=session.business_id,
+                )
+                business_data = res
+                action_type = "business_query"
+                response_text = res["message"]
 
         elif fn_name == "add_stock":
             product_name = args.get("product_name", "").strip()
@@ -1284,6 +1294,39 @@ async def process_voice_interaction(
             "total_ms": round(total_time, 2),
         },
     )
+
+
+@router.post(
+    "/interact",
+    response_model=VoiceInteractResponse,
+    summary="Process voice/text interaction and dispatch robot actions",
+)
+async def process_voice_interaction(
+    req: VoiceInteractRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> VoiceInteractResponse:
+    """Safely orchestrate voice/text interaction with comprehensive crash protection."""
+    t_start = time.perf_counter()
+    try:
+        return await _process_voice_interaction_impl(
+            req=req,
+            background_tasks=background_tasks,
+            db=db,
+            t_start=t_start,
+        )
+    except Exception as exc:
+        logger.exception("Error processing voice interaction: %s", exc)
+        total_time = (time.perf_counter() - t_start) * 1000
+        safe_reply = "Sorry, thoda technical issue hua. Ek baar dobara boliye."
+        return VoiceInteractResponse(
+            response_text=safe_reply,
+            action_type="error",
+            conversation_id=req.conversation_id or "default",
+            immediate_ack="Error",
+            state="ERROR",
+            latencies={"total_ms": round(total_time, 2)},
+        )
 
 
 @router.websocket("/ws")

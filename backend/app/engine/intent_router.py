@@ -125,6 +125,12 @@ class IntentRouter:
             # If prompt has destructive/clearing keywords, do not treat as a simple stock inquiry
             if intent_name in ("GET_STOCK", "GET_INVENTORY") and re.search(r"\b(delete|remove|clear|hatao|saaf|clean|reset)\b", clean):
                 continue
+            # If prompt contains Hindi idiom "ek kam karo" / "kaam karo", do not treat as REDUCE_STOCK
+            if intent_name == "REDUCE_STOCK" and re.search(r"\b(ek|koi|mera)\s+(?:kam|kaam)\b", clean):
+                continue
+            # If prompt asks for "online" / "internet" / "google" / "market rate", route to AI reasoning
+            if any(w in clean for w in ["online", "internet", "google", "market rate"]) and intent_name in ("REDUCE_STOCK", "GET_STOCK", "GET_PRICE"):
+                continue
             for pat in patterns:
                 if re.search(pat, clean):
                     # Base score for regex match

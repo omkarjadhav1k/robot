@@ -13,16 +13,16 @@ logger = logging.getLogger("robot.engine.entities")
 
 # Canonical Product Aliases Dictionary
 PRODUCT_ALIASES: Dict[str, List[str]] = {
-    "maggi": ["maggi", "maggie", "maggi noodles", "noodles"],
+    "maggi": ["maggi", "maggie", "maggi noodles", "noodles", "meggi"],
     "parle g": ["parle g", "parleg", "parle-g", "parle biscuit", "parle"],
-    "tata salt": ["tata salt", "namak", "tata namak", "salt"],
+    "tata salt": ["tata salt", "namak", "tata namak", "salt", "solt", "mith"],
     "surf excel": ["surf excel", "surf", "surf detergent", "surf packet"],
-    "basmati rice": ["basmati rice", "basmati", "chawal", "rice"],
-    "sugar": ["sugar", "shakkar", "cheeni", "sakhar"],
+    "basmati rice": ["basmati rice", "basmati", "chawal", "rice", "raice"],
+    "sugar": ["sugar", "suger", "shugar", "sugr", "shakkar", "cheeni", "sakhar"],
     "milk": ["milk", "doodh", "dudh"],
     "tea": ["tea", "chai", "chaha", "tea powder"],
     "veg sandwich": ["veg sandwich", "sandwich"],
-    "sunflower oil": ["sunflower oil", "oil", "tel"],
+    "sunflower oil": ["sunflower oil", "oil", "tel", "oyil"],
     "wheat flour": ["wheat flour", "aata", "atta", "gehu aata"],
 }
 
@@ -368,10 +368,15 @@ class EntityExtractor:
         if not matches:
             # Try matching individual words
             for word in clean_term.split():
-                if len(word) > 2 and word not in ["packet", "packets", "cup", "bottle", "box", "kg"]:
+                if len(word) > 2 and word not in ["packet", "packets", "cup", "bottle", "box", "kg", "rate", "price", "kitna", "hai", "kya"]:
                     matches = q.filter(Product.name.ilike(f"%{word}%")).all()
                     if matches:
                         break
+        if not matches:
+            from app.services.inventory_service import InventoryService
+            fuzzy_p = InventoryService.search_product(db, clean_term, business_id)
+            if fuzzy_p:
+                matches = [fuzzy_p]
         return matches
 
     @classmethod

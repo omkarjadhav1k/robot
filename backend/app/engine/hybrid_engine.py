@@ -109,7 +109,11 @@ class HybridEngine:
                     if stock_info.get("found"):
                         stk = stock_info["current_stock"]
                         stk_str = str(int(stk)) if stk % 1 == 0 else f"{stk:.1f}"
-                        response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
+                        price = stock_info.get("selling_price", 0.0)
+                        if any(w in user_text.lower() for w in ["rate", "price", "bhaav", "kimat", "kitne ka"]):
+                            response_text = f"{stock_info['name']} ka rate ₹{price:.2f} per {stock_info['unit']} hai, aur abhi {stk_str} {stock_info['unit']} available hain."
+                        else:
+                            response_text = f"{stock_info['name']} ke {stk_str} {stock_info['unit']} available hain."
                     else:
                         response_text = f"Mujhe '{p_name}' naam ka product inventory mein nahi mila."
                 action_type = "business_query"
