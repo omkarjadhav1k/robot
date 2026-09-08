@@ -49,9 +49,8 @@ router = APIRouter()
 settings = get_settings()
 
 
-async def reason_with_gemini(*args, **kwargs):
-    """Legacy interface placeholder. Production engine is strictly deterministic and non-LLM."""
-    raise NotImplementedError("reason_with_gemini is replaced by deterministic non-LLM engine.")
+from app.ai.gemini_service import reason_with_gemini
+from app.engine.hybrid_engine import HybridEngine
 
 
 def _get_immediate_ack(prompt: str) -> str:
@@ -641,6 +640,20 @@ async def process_voice_interaction(
     elif intent_match.intent in ("GREETING", "HOW_ARE_YOU", "BOT_STATUS", "HELP"):
         fn_name = None
         response_text = ResponseTemplates.get(intent_match.intent)
+    elif intent_match.intent == "CLEAR_INVENTORY" or intent_match.is_unknown or intent_match.intent == "UNKNOWN" or (intent_match.requires_clarification and intent_match.intent != "AMBIGUOUS_PRODUCT"):
+        recent_msgs = ConversationService.get_history(db, session.id, limit=6)
+        history_turns = [{"role": m.role, "content": m.content} for m in recent_msgs]
+        h_res = await HybridEngine.reason_and_execute(
+            user_text=prompt,
+            db=db,
+            business_id=session.business_id,
+            robot_id=robot_id,
+            history=history_turns,
+        )
+        fn_name = None
+        response_text = h_res.response_text
+        action_type = h_res.action_type
+        business_data = h_res.data
     else:
         fn_name = None
         response_text = ResponseTemplates.get("UNKNOWN")
@@ -978,6 +991,17 @@ async def process_voice_interaction(
                         f"{res.error_message or 'Please check customer WhatsApp number.'}"
                     )
             action_type = "whatsapp_action"
+
+        elif fn_name == "clear_or_reset_inventory":
+            is_confirmed = bool(args.get("confirm", False))
+            if is_confirmed:
+                res = InventoryService.clear_all_inventory(db, business_id=session.business_id)
+                response_text = res["message"]
+                business_data = res
+                action_type = "inventory_action"
+            else:
+                response_text = "Dukan ka sara stock delete karna bada action hai. Kya aap sach mein confirm karte hain? Haan bolenge toh main proceed karunga."
+                action_type = "confirmation_required"
 
         elif fn_name == "add_product":
             p_name = str(args.get("name", "")).strip()

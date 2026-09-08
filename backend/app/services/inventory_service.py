@@ -445,3 +445,21 @@ class InventoryService:
                 "unit": res.get("unit", "packet"),
                 "message": f"Naya product '{res['name']}' register kiya aur {float(dec_qty)} {res.get('unit', 'packet')} stock add kar diya.",
             }
+
+    @staticmethod
+    def clear_all_inventory(db: Session, business_id: Optional[Any] = None) -> Dict[str, Any]:
+        """Reset or clear all products/stock in inventory."""
+        q = db.query(Product).filter(Product.is_active == True)
+        if business_id:
+            q = q.filter(Product.business_id == business_id)
+        products = q.all()
+        count = len(products)
+        for p in products:
+            p.current_stock = Decimal("0.00")
+            p.is_active = False
+        db.commit()
+        return {
+            "success": True,
+            "cleared_count": count,
+            "message": f"Dukan ke sabhi {count} products ka stock clear aur remove kar diya gaya hai. Ab aap naye items ek-ek karke add kar sakte hain.",
+        }

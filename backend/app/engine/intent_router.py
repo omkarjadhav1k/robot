@@ -43,6 +43,13 @@ class IntentRouter:
         ("GENERATE_SALES_REPORT", [r"\b(sales report|bikri report|sales analysis)\b"]),
         ("GENERATE_INVENTORY_REPORT", [r"\b(inventory report|stock report|stock analysis)\b"]),
 
+        # 2.5 Destructive Inventory Reset (Confirmation Required)
+        ("CLEAR_INVENTORY", [
+            r"\b(clean|clear|delete|remove|hatao|saaf|reset)\b.*\b(stock|inventory|saman|maal|dukan)\b",
+            r"\b(stock|inventory|saman|maal)\b.*\b(clean|clear|delete|remove|hatao|saaf|reset)\b",
+            r"stock\s+pura\s+(?:remove|delete)",
+        ]),
+
         # 3. Fast Inquiries
         ("GET_STOCK", [
             r"\b(stock|kitna hai|kitne hai|baki hai|available|pada hai|quantity)\b",
@@ -115,10 +122,13 @@ class IntentRouter:
         best_score = 0.0
 
         for intent_name, patterns in cls.INTENT_TRIGGERS:
+            # If prompt has destructive/clearing keywords, do not treat as a simple stock inquiry
+            if intent_name in ("GET_STOCK", "GET_INVENTORY") and re.search(r"\b(delete|remove|clear|hatao|saaf|clean|reset)\b", clean):
+                continue
             for pat in patterns:
                 if re.search(pat, clean):
                     # Base score for regex match
-                    score = 0.85
+                    score = 0.95 if intent_name == "CLEAR_INVENTORY" else 0.85
 
                     # Boost score if required entities are present
                     cmd_def = COMMAND_REGISTRY.get(intent_name)

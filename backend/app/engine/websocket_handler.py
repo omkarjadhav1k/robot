@@ -18,6 +18,7 @@ from app.engine.command_registry import CommandMode
 from app.engine.conversation_state import ConversationStateManager
 from app.engine.entity_extractor import EntityExtractor
 from app.engine.fast_query_engine import FastQueryEngine
+from app.engine.hybrid_engine import HybridEngine
 from app.engine.intent_router import IntentRouter
 from app.engine.response_templates import ResponseTemplates
 from app.engine.task_manager import BackgroundTaskManager
@@ -172,12 +173,16 @@ class WebSocketSessionHandler:
                 last_customer=state_ctx.last_customer,
             )
 
+            # Record user turn in DB conversation history
+            ConversationService.append_message(db, session, role="user", content=text)
+
             # 3. Classify Intent
             match = IntentRouter.classify(text, entities)
 
-            # 4. Handle Disambiguation
-            if match.requires_clarification:
+            # 4. Handle Product Disambiguation (e.g. "Kaunsi Maggi? ...")
+            if match.requires_clarification and match.intent == "AMBIGUOUS_PRODUCT":
                 reply = match.clarification_message or ResponseTemplates.get("UNKNOWN")
+                ConversationService.append_message(db, session, role="assistant", content=reply, structured_intent=match.intent)
                 await self._send_json({"type": "clarification", "request_id": request_id, "text": reply})
                 await self.stream_tts_response(reply, request_id)
                 return
@@ -186,20 +191,19 @@ class WebSocketSessionHandler:
             cmd_def = match.command_def or {}
             mode = cmd_def.get("mode", CommandMode.FAST.value)
 
-            # 5. Handle Background Jobs (Strategy, Reports)
+            # 5. Handle Background Jobs (Strategy, Reports) - Tier 1 Fast Sub-10ms
             if mode == CommandMode.BACKGROUND.value or intent in ("CREATE_WEEKLY_STRATEGY", "GENERATE_SALES_REPORT", "GENERATE_INVENTORY_REPORT"):
                 immediate_ack = ResponseTemplates.get("ACK_STRATEGY") if "STRATEGY" in intent else ResponseTemplates.get("ACK_TASK")
-                # Immediately acknowledge! (Section 1)
                 await self._send_json({"type": "ack", "request_id": request_id, "text": immediate_ack})
                 await self.stream_tts_response(immediate_ack, request_id)
 
-                # Queue background task
                 task_id = BackgroundTaskManager.enqueue_task(
                     task_type=intent,
                     business_id=session.business_id,
                 )
                 state_ctx.active_task_ids.append(task_id)
                 ConversationStateManager.save_state(db, session, state_ctx)
+                ConversationService.append_message(db, session, role="assistant", content=immediate_ack, structured_intent=intent)
 
                 await self._send_json({
                     "type": "job_started",
@@ -209,7 +213,7 @@ class WebSocketSessionHandler:
                 })
                 return
 
-            # 6. Handle Task Status Query
+            # 6. Handle Task Status Query - Tier 1 Fast Sub-10ms
             if intent == "TASK_STATUS":
                 active_ids = state_ctx.active_task_ids
                 if not active_ids:
@@ -222,11 +226,12 @@ class WebSocketSessionHandler:
                     else:
                         reply = "Abhi ready hoon. Batao kya karna hai."
 
+                ConversationService.append_message(db, session, role="assistant", content=reply, structured_intent=intent)
                 await self._send_json({"type": "response", "request_id": request_id, "text": reply})
                 await self.stream_tts_response(reply, request_id)
                 return
 
-            # 7. Handle Past Task Retrieval ("Kal wali strategy batao")
+            # 7. Handle Past Task Retrieval ("Kal wali strategy batao") - Tier 1 Fast Sub-15ms
             if intent == "GET_COMPLETED_TASK":
                 completed_task = BackgroundTaskManager.get_latest_completed_task(
                     task_type="STRATEGY" if "strategy" in text.lower() else None,
@@ -238,37 +243,78 @@ class WebSocketSessionHandler:
                 else:
                     reply = "Purana koi saved task result nahi mila."
 
+                ConversationService.append_message(db, session, role="assistant", content=reply, structured_intent=intent)
                 await self._send_json({"type": "response", "request_id": request_id, "text": reply})
                 await self.stream_tts_response(reply, request_id)
                 return
 
-            # 8. Fast Query Engine Execution
-            fast_res = FastQueryEngine.execute(
-                intent=intent,
-                entities=entities,
+            # 8. Check Tier 1 Deterministic Fast-Path Eligibility (<20ms)
+            is_fast_path = False
+            if intent == "CONTROL_RELAY" and match.confidence >= 0.85 and (entities.device or entities.relay_channel):
+                is_fast_path = True
+            elif intent in ("GET_STOCK", "GET_PRICE") and entities.product and match.confidence >= 0.85:
+                is_fast_path = True
+            elif intent == "GET_CUSTOMER_BALANCE" and entities.customer and match.confidence >= 0.85:
+                is_fast_path = True
+            elif intent in ("GREETING", "HOW_ARE_YOU", "BOT_STATUS", "HELP") and match.confidence >= 0.90:
+                is_fast_path = True
+
+            if is_fast_path and not match.is_unknown and not match.requires_clarification:
+                fast_res = FastQueryEngine.execute(
+                    intent=intent,
+                    entities=entities,
+                    db=db,
+                    business_id=session.business_id,
+                    robot_id=self.robot_id,
+                )
+                if fast_res.success:
+                    if entities.product:
+                        state_ctx.last_product = entities.product
+                    if entities.customer:
+                        state_ctx.last_customer = entities.customer
+                    state_ctx.last_intent = intent
+                    ConversationStateManager.save_state(db, session, state_ctx)
+
+                    ConversationService.append_message(db, session, role="assistant", content=fast_res.response_text, structured_intent=intent)
+                    await self._send_json({
+                        "type": "response",
+                        "request_id": request_id,
+                        "text": fast_res.response_text,
+                        "action_type": fast_res.action_type,
+                        "data": fast_res.data,
+                        "latency_ms": fast_res.latency_ms,
+                    })
+                    await self.stream_tts_response(fast_res.response_text, request_id)
+                    return
+
+            # 9. Tier 2: Gemini Thinking Engine for casual multi-language phrasing, typos, incomplete instructions, and confirmation flows
+            recent_msgs = ConversationService.get_history(db, session.id, limit=6)
+            history_turns = [{"role": m.role, "content": m.content} for m in recent_msgs]
+
+            hybrid_res = await HybridEngine.reason_and_execute(
+                user_text=text,
                 db=db,
                 business_id=session.business_id,
                 robot_id=self.robot_id,
+                history=history_turns,
             )
 
-            # Update conversation state context with entities
-            if entities.product:
-                state_ctx.last_product = entities.product
-            if entities.customer:
-                state_ctx.last_customer = entities.customer
-            state_ctx.last_intent = intent
-            ConversationStateManager.save_state(db, session, state_ctx)
+            ConversationService.append_message(
+                db, session, role="assistant",
+                content=hybrid_res.response_text,
+                structured_intent=hybrid_res.tool_invoked or "GEMINI_REASONING"
+            )
 
-            # Send response & stream audio
             await self._send_json({
                 "type": "response",
                 "request_id": request_id,
-                "text": fast_res.response_text,
-                "action_type": fast_res.action_type,
-                "data": fast_res.data,
-                "latency_ms": fast_res.latency_ms,
+                "text": hybrid_res.response_text,
+                "action_type": hybrid_res.action_type,
+                "data": hybrid_res.data,
+                "latency_ms": hybrid_res.latency_ms,
+                "tool_invoked": hybrid_res.tool_invoked,
             })
-            await self.stream_tts_response(fast_res.response_text, request_id)
+            await self.stream_tts_response(hybrid_res.response_text, request_id)
 
     async def stream_tts_response(self, text: str, request_id: str):
         """Synthesize and stream audio frames over WebSocket with interruption support."""

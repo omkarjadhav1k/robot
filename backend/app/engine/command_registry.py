@@ -116,6 +116,19 @@ COMMAND_REGISTRY: Dict[str, CommandDefinition] = {
         keywords=["details", "detail", "mahit", "specification"],
         required_entities=["product"],
     ),
+    "CLEAR_INVENTORY": CommandDefinition(
+        intent="CLEAR_INVENTORY",
+        description="Clear, delete, or reset all products/stock in inventory (confirmation required)",
+        mode=CommandMode.CONFIRMATION_REQUIRED,
+        priority=CommandPriority.HIGH,
+        keywords=["delete stock", "clear stock", "remove stock", "clean shop", "reset inventory", "pura stock delete", "saman hatao", "stock clear", "stock delete"],
+        regex_patterns=[
+            r"\b(delete|remove|clear|hatao|saaf|clean|reset)\b.*\b(stock|inventory|saman|maal)\b",
+            r"\b(stock|inventory|saman|maal)\b.*\b(delete|remove|clear|hatao|saaf|clean|reset)\b",
+        ],
+        destructive=True,
+        requires_confirmation=True,
+    ),
 
     # 3. Customer & Ledger (Fast Mode)
     "GET_CUSTOMER_BALANCE": CommandDefinition(
