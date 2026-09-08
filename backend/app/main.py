@@ -78,15 +78,17 @@ async def lifespan(app: FastAPI):
                 db.commit()
                 logger.info("Seeded %d store products into database.", len(seed_items))
 
-            # Ensure essential products exist and have realistic stock (Tata Salt, Surf Excel, Sugar, Tea, Sandwich)
+            # Ensure essential products exist and have realistic stock and price
             for p_name, p_unit, p_price, p_stock in [
                 ("Tata Salt", "packet", Decimal("28.00"), Decimal("37.00")),
                 ("Surf Excel", "packet", Decimal("140.00"), Decimal("50.00")),
                 ("Sugar", "kg", Decimal("42.00"), Decimal("10.00")),
+                ("Maggi", "packet", Decimal("14.00"), Decimal("40.00")),
+                ("Basmati Rice", "kg", Decimal("85.00"), Decimal("50.00")),
                 ("Tea", "cup", Decimal("20.00"), Decimal("100.00")),
                 ("Veg Sandwich", "pcs", Decimal("80.00"), Decimal("50.00")),
             ]:
-                existing_p = db.query(Product).filter(Product.business_id == biz.id, Product.name.ilike(p_name)).first()
+                existing_p = db.query(Product).filter(Product.name.ilike(p_name)).first()
                 if not existing_p:
                     db.add(Product(
                         business_id=biz.id,
@@ -101,10 +103,10 @@ async def lifespan(app: FastAPI):
                     db.commit()
                 else:
                     changed = False
-                    if existing_p.selling_price <= Decimal("0.00"):
+                    if not existing_p.selling_price or existing_p.selling_price <= Decimal("0.00"):
                         existing_p.selling_price = p_price
                         changed = True
-                    if existing_p.current_stock <= Decimal("0.00"):
+                    if not existing_p.current_stock or existing_p.current_stock <= Decimal("0.00"):
                         existing_p.current_stock = p_stock
                         changed = True
                     if changed:

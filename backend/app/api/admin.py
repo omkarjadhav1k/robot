@@ -77,6 +77,13 @@ class RecordPaymentRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class UpdateProductRequest(BaseModel):
+    name: str
+    selling_price: float
+    current_stock: Optional[float] = None
+    unit: Optional[str] = "kg"
+
+
 # --- UI Endpoints ---
 
 @router.get("/admin", response_class=HTMLResponse, tags=["admin"])
@@ -254,6 +261,22 @@ async def record_admin_payment(req: RecordPaymentRequest, db: Session = Depends(
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/v1/admin/products/update", tags=["admin"])
+async def update_admin_product(req: UpdateProductRequest, db: Session = Depends(get_db)):
+    """Add or update a product's price, stock, and unit in the store inventory."""
+    biz = db.query(Business).first()
+    biz_id = biz.id if biz else None
+    res = InventoryService.add_or_update_product(
+        db=db,
+        name=req.name,
+        selling_price=Decimal(str(req.selling_price)),
+        current_stock=Decimal(str(req.current_stock)) if req.current_stock is not None else None,
+        unit=req.unit or "kg",
+        business_id=biz_id,
+    )
+    return res
 
 
 @router.post("/api/v1/admin/chat", tags=["admin"])
