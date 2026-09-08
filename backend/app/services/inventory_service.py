@@ -88,33 +88,27 @@ class InventoryService:
             if p_low == clean or p_low == normalized_query:
                 return p
 
-        # 2. Substring match
+        # 2. Substring match (e.g., query "salt" in "Tata Salt", or query "tata salt packet" contains "tata salt")
         for p in all_products:
             p_low = p.name.lower()
             if clean in p_low or normalized_query in p_low:
                 return p
-
-        # 3. Word token overlap
-        for p in all_products:
-            p_tokens = set(re.split(r"[\s,\-_]+", p.name.lower()))
-            if any(t in p_tokens for t in normalized_tokens if len(t) > 2):
+            # If product name is entirely contained in query and product name has >= 4 chars
+            if len(p_low) >= 4 and p_low in clean:
                 return p
 
-        # 4. Fuzzy distance matching (difflib)
+        # 3. High-confidence fuzzy match on full query (e.g., "suger" vs "sugar")
         prod_map = {p.name.lower(): p for p in all_products}
         name_list = list(prod_map.keys())
-
-        # Match against full normalized query
-        close_full = difflib.get_close_matches(normalized_query, name_list, n=1, cutoff=0.55)
+        close_full = difflib.get_close_matches(normalized_query, name_list, n=1, cutoff=0.72)
         if close_full:
             return prod_map[close_full[0]]
 
-        # Match against individual tokens
-        for t in normalized_tokens:
-            if len(t) >= 3:
-                close_token = difflib.get_close_matches(t, name_list, n=1, cutoff=0.60)
-                if close_token:
-                    return prod_map[close_token[0]]
+        # 4. Word token overlap: only if ALL normalized tokens of query are in product tokens
+        for p in all_products:
+            p_tokens = set(re.split(r"[\s,\-_]+", p.name.lower()))
+            if set(normalized_tokens).issubset(p_tokens):
+                return p
 
         return None
 
@@ -244,7 +238,25 @@ class InventoryService:
                 db.flush()
             business_id = default_biz.id
 
-        existing = InventoryService.search_product(db, clean_name, business_id)
+        # Check for exact case-insensitive match when creating/restocking
+        q_exist = db.query(Product).filter(Product.is_active == True)
+        if business_id:
+            q_exist = q_exist.filter(Product.business_id == business_id)
+        existing = None
+        for p in q_exist.all():
+            if p.name.lower().strip() == clean_name.lower().strip():
+                existing = p
+                break
+        if not existing:
+            # Fallback to high-confidence match for minor typo (e.g. "suger" -> "Sugar")
+            existing = InventoryService.search_product(db, clean_name, business_id)
+            if existing and existing.name.lower().strip() != clean_name.lower().strip():
+                # Don't merge if both are multi-word or have distinct keywords
+                clean_words = set(clean_name.lower().split())
+                exist_words = set(existing.name.lower().split())
+                if len(clean_words.symmetric_difference(exist_words)) > 1:
+                    existing = None
+
         if existing:
             # Restock existing product
             stock_before = existing.current_stock
@@ -393,8 +405,9 @@ class InventoryService:
     def add_or_restock_product(
         db: Session,
         product_name: str,
-        quantity: float,
+        quantity: float = 1.0,
         unit: Optional[str] = None,
+        selling_price: float = 0.0,
         business_id: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Atomically add stock for an existing product or register new with added stock."""
@@ -413,6 +426,8 @@ class InventoryService:
         if product:
             stock_before = product.current_stock
             product.current_stock += dec_qty
+            if selling_price and Decimal(str(selling_price)) > Decimal("0"):
+                product.selling_price = Decimal(str(selling_price)).quantize(Decimal("0.01"))
             txn = InventoryTransaction(
                 business_id=product.business_id,
                 product_id=product.id,
@@ -437,14 +452,16 @@ class InventoryService:
                 "message": f"{product.name} mein {int(dec_qty) if dec_qty % 1 == 0 else float(dec_qty)} {product.unit} add kar diye. Ab total {int(product.current_stock) if product.current_stock % 1 == 0 else float(product.current_stock)} {product.unit} available hain.",
             }
         else:
-            # Add new product
+            # Add new product with selling_price if available
             res = InventoryService.add_or_update_product(
                 db=db,
                 name=clean_name,
                 unit=unit or "packet",
+                selling_price=selling_price,
                 stock=float(dec_qty),
                 business_id=business_id,
             )
+            price_str = f" @ ₹{res['selling_price']:.0f}" if res.get("selling_price") else ""
             return {
                 "success": True,
                 "found": False,
@@ -453,8 +470,48 @@ class InventoryService:
                 "quantity_added": float(dec_qty),
                 "new_stock": float(dec_qty),
                 "unit": res.get("unit", "packet"),
-                "message": f"Naya product '{res['name']}' register kiya aur {float(dec_qty)} {res.get('unit', 'packet')} stock add kar diya.",
+                "selling_price": res.get("selling_price", 0.0),
+                "message": f"Naya product '{res['name']}' register kiya aur {float(dec_qty):.0f} {res.get('unit', 'packet')}{price_str} stock add kar diya.",
             }
+
+    @staticmethod
+    def add_multiple_products(
+        db: Session,
+        products: List[Dict[str, Any]],
+        business_id: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Create or restock multiple products/varieties in batch in store inventory."""
+        if not products:
+            return {"success": False, "added_count": 0, "products": [], "message": "Koi product details nahi mili."}
+
+        results = []
+        for p in products:
+            name = str(p.get("name", "")).strip()
+            if not name:
+                continue
+            price = float(p.get("selling_price") or p.get("price") or 0.0)
+            stock = float(p.get("quantity") or p.get("stock") or 10.0)
+            unit = str(p.get("unit") or "pieces").strip()
+            purch_price = float(p.get("purchase_price") or (price * 0.75 if price else 0.0))
+            res = InventoryService.add_or_update_product(
+                db=db,
+                name=name,
+                unit=unit,
+                selling_price=price,
+                stock=stock,
+                purchase_price=purch_price,
+                business_id=business_id,
+            )
+            results.append(res)
+
+        items_summary = [f"{r['name']} ({r['current_stock']:.0f} {r['unit']} @ ₹{r['selling_price']:.0f})" for r in results]
+        return {
+            "success": True,
+            "added_count": len(results),
+            "products": results,
+            "summary": ", ".join(items_summary),
+            "message": f"{len(results)} varieties add ho gayi hain: {', '.join(items_summary)}.",
+        }
 
     @staticmethod
     def clear_all_inventory(db: Session, business_id: Optional[Any] = None) -> Dict[str, Any]:

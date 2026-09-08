@@ -723,13 +723,22 @@ async def _process_voice_interaction_impl(
             except Exception:
                 qty = 1.0
             unit = args.get("unit")
+            s_price = float(args.get("selling_price", 0.0))
             res = InventoryService.add_or_restock_product(
                 db=db,
                 product_name=product_name,
                 quantity=qty,
                 unit=unit,
+                selling_price=s_price,
                 business_id=session.business_id,
             )
+            business_data = res
+            action_type = "business_query"
+            response_text = res["message"]
+
+        elif fn_name == "add_product_varieties":
+            prods = args.get("products", [])
+            res = InventoryService.add_multiple_products(db=db, products=prods, business_id=session.business_id)
             business_data = res
             action_type = "business_query"
             response_text = res["message"]

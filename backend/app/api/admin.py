@@ -595,3 +595,11 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
         "audio_url": audio_url,
         "latencies": {"total_ms": duration},
     }
+
+
+@router.post("/inventory/clear")
+def clear_inventory(db: Session = Depends(get_db)):
+    """Clear all products from inventory so store can start fresh with clean varieties."""
+    res = InventoryService.clear_all_inventory(db=db)
+    return res
+

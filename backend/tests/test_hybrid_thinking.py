@@ -124,3 +124,30 @@ def test_sugar_price_typo_and_idiom(client: TestClient, db_session: Session):
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert data2["response_text"]  # must return valid response without 500
+
+
+def test_add_multiple_product_varieties(db_session: Session):
+    """Verify InventoryService.add_multiple_products adds varieties with prices to DB."""
+    from app.services.inventory_service import InventoryService
+    biz = db_session.query(Business).first()
+    varieties = [
+        {"name": "Casual Cotton Shirt", "selling_price": 699.0, "quantity": 20.0, "unit": "pieces"},
+        {"name": "Formal Slim Fit Shirt", "selling_price": 999.0, "quantity": 15.0, "unit": "pieces"},
+        {"name": "Denim Shirt", "selling_price": 1199.0, "quantity": 10.0, "unit": "pieces"},
+    ]
+    res = InventoryService.add_multiple_products(db=db_session, products=varieties, business_id=biz.id)
+    assert res["success"] is True
+    assert res["added_count"] == 3
+
+    # Check products exist in DB
+    all_prods = InventoryService.list_all_products(db=db_session, business_id=biz.id)
+    prod_names = [p["name"] for p in all_prods]
+    assert "Casual Cotton Shirt" in prod_names
+    assert "Formal Slim Fit Shirt" in prod_names
+    assert "Denim Shirt" in prod_names
+
+    # Check prices
+    for p in all_prods:
+        if p["name"] == "Casual Cotton Shirt":
+            assert p["selling_price"] == 699.0
+            assert p["current_stock"] == 20.0

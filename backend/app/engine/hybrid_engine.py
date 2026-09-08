@@ -137,7 +137,23 @@ class HybridEngine:
                     qty = float(args.get("quantity", 1.0))
                 except Exception:
                     qty = 1.0
-                res = InventoryService.add_or_restock_product(db=db, product_name=p_name, quantity=qty, unit=args.get("unit"), business_id=business_id)
+                s_price = float(args.get("selling_price", 0.0))
+                res = InventoryService.add_or_restock_product(
+                    db=db,
+                    product_name=p_name,
+                    quantity=qty,
+                    unit=args.get("unit"),
+                    selling_price=s_price,
+                    business_id=business_id,
+                )
+                response_text = res["message"]
+                business_data = res
+                action_type = "business_query"
+
+            # 4b. Add Multiple Product Varieties in Batch
+            elif tool_name == "add_product_varieties":
+                raw_products = args.get("products", [])
+                res = InventoryService.add_multiple_products(db=db, products=raw_products, business_id=business_id)
                 response_text = res["message"]
                 business_data = res
                 action_type = "business_query"
