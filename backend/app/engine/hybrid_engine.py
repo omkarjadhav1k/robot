@@ -209,8 +209,16 @@ class HybridEngine:
             # 9. List All Products
             elif tool_name == "list_all_products":
                 prods = InventoryService.list_all_products(db, business_id, limit=20)
-                summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in prods[:5]])
-                response_text = f"Dukan mein {len(prods)} products hain: {summary}."
+                if not prods:
+                    response_text = "Dukan mein abhi koi product stock mein nahi hai."
+                else:
+                    include_price = any(w in user_text.lower() for w in ["price", "rate", "bhaav", "kimat", "rupaye", "rs", "with price"])
+                    if include_price:
+                        summary = ", ".join([f"{p['name']} (₹{p['selling_price']:.2f}/{p['unit']}, {p['current_stock']:.1f} {p['unit']} available)" for p in prods[:5]])
+                    else:
+                        summary = ", ".join([f"{p['name']} ({p['current_stock']:.1f} {p['unit']})" for p in prods[:5]])
+                    more = f" aur {len(prods)-5} products" if len(prods) > 5 else ""
+                    response_text = f"Dukan mein {len(prods)} products available hain: {summary}{more}."
                 business_data = {"products": prods}
                 action_type = "business_query"
 

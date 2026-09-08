@@ -572,6 +572,10 @@ async def _process_voice_interaction_impl(
     # Map intent to structured deterministic tool execution
     fn_name = None
     args = {}
+    response_text = ""
+    action_type = "conversation"
+    business_data: Optional[Dict[str, Any]] = None
+    command_dispatched: Optional[RobotCommand] = None
 
     # Backward compatibility for legacy tests that explicitly mock reason_with_gemini
     if callable(reason_with_gemini) and (getattr(reason_with_gemini, "_is_mock", False) or hasattr(reason_with_gemini, "assert_called") or hasattr(reason_with_gemini, "return_value")):
@@ -591,58 +595,51 @@ async def _process_voice_interaction_impl(
 
     if fn_name:
         pass
-    elif intent_match.intent in ("GET_STOCK", "GET_PRICE") and not entities.product:
-        intent_match.intent = "UNKNOWN"
-        fn_name = None
-    elif intent_match.intent == "GET_STOCK":
+    elif intent_match.intent in ("GET_STOCK", "GET_PRICE") and entities.product and intent_match.confidence >= 0.85:
         fn_name = "check_stock"
-        args = {"product_name": entities.product or ""}
-    elif intent_match.intent == "REDUCE_STOCK" and not entities.product and not (state_ctx and state_ctx.last_product):
-        intent_match.intent = "UNKNOWN"
-        fn_name = None
-    elif intent_match.intent == "REDUCE_STOCK":
+        args = {"product_name": entities.product}
+    elif intent_match.intent == "REDUCE_STOCK" and (entities.product or (state_ctx and state_ctx.last_product)) and intent_match.confidence >= 0.85:
         fn_name = "reduce_stock"
         args = {"product_name": entities.product or (state_ctx.last_product if state_ctx else ""), "quantity": entities.quantity or 1.0}
-    elif intent_match.intent == "GET_PRICE":
-        fn_name = "check_stock"
-        args = {"product_name": entities.product or ""}
-    elif intent_match.intent == "GET_LOW_STOCK":
+    elif intent_match.intent == "GET_LOW_STOCK" and intent_match.confidence >= 0.85:
         fn_name = "get_low_stock_items"
         args = {}
-    elif intent_match.intent == "GET_INVENTORY":
+    elif intent_match.intent == "GET_INVENTORY" and intent_match.confidence >= 0.85:
         fn_name = "list_all_products"
         args = {}
-    elif intent_match.intent == "GET_CUSTOMER_BALANCE":
+    elif intent_match.intent == "GET_CUSTOMER_BALANCE" and entities.customer and intent_match.confidence >= 0.85:
         fn_name = "get_customer"
-        args = {"customer_name": entities.customer or ""}
-    elif intent_match.intent == "GET_TODAY_SALES":
+        args = {"customer_name": entities.customer}
+    elif intent_match.intent == "GET_TODAY_SALES" and intent_match.confidence >= 0.85:
         fn_name = "get_sales_today"
         args = {"customer_name": entities.customer or ""}
-    elif intent_match.intent == "CREATE_BILL":
+    elif intent_match.intent == "CREATE_BILL" and entities.items:
         fn_name = "create_bill"
         args = {
-            "items": entities.items or [{"name": entities.product or "", "quantity": entities.quantity or 1}],
+            "items": entities.items,
             "customer_name": entities.customer,
             "send_whatsapp": "whatsapp" in prompt.lower(),
         }
-    elif intent_match.intent == "UPDATE_PAYMENT":
+    elif intent_match.intent == "UPDATE_PAYMENT" and entities.customer and entities.amount:
         fn_name = "record_payment"
         args = {
             "customer_name": entities.customer,
             "amount": entities.amount or 0.0,
             "payment_method": entities.payment_method,
         }
-    elif intent_match.intent == "CONTROL_RELAY":
+    elif intent_match.intent == "CONTROL_RELAY" and (entities.device or entities.relay_channel):
         fn_name = "control_relay"
         args = {
             "device": entities.device or "",
             "relay_number": entities.relay_channel,
             "state": entities.relay_state or "on",
         }
-    elif intent_match.intent in ("GREETING", "HOW_ARE_YOU", "BOT_STATUS", "HELP"):
+    elif intent_match.intent in ("GREETING", "HOW_ARE_YOU", "BOT_STATUS", "HELP") and intent_match.confidence >= 0.90:
         fn_name = None
         response_text = ResponseTemplates.get(intent_match.intent)
-    elif intent_match.intent == "CLEAR_INVENTORY" or intent_match.is_unknown or intent_match.intent == "UNKNOWN" or (intent_match.requires_clarification and intent_match.intent != "AMBIGUOUS_PRODUCT"):
+
+    # If no deterministic reflex was mapped or response generated, engage Tier 2 Gemini Thinking Brain!
+    if not fn_name and not response_text:
         recent_msgs = ConversationService.get_history(db, session.id, limit=6)
         history_turns = [{"role": m.role, "content": m.content} for m in recent_msgs]
         h_res = await HybridEngine.reason_and_execute(
@@ -656,15 +653,11 @@ async def _process_voice_interaction_impl(
         response_text = h_res.response_text
         action_type = h_res.action_type
         business_data = h_res.data
-    else:
-        fn_name = None
-        response_text = ResponseTemplates.get("UNKNOWN")
+        if h_res.command_dispatched:
+            command_dispatched = RobotCommand(**h_res.command_dispatched)
 
     gemini_ms = 0.0
     ai_duration = 0.0
-    action_type = "conversation"
-    business_data: Optional[Dict[str, Any]] = None
-    command_dispatched: Optional[RobotCommand] = None
 
     # 5. Handle Tool Execution
     if fn_name:
