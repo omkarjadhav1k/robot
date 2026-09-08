@@ -78,10 +78,11 @@ async def lifespan(app: FastAPI):
                 db.commit()
                 logger.info("Seeded %d store products into database.", len(seed_items))
 
-            # Ensure essential products exist and have realistic stock (Tata Salt: 37 packets, Surf Excel: 50 packets)
+            # Ensure essential products exist and have realistic stock (Tata Salt, Surf Excel, Sugar, Tea, Sandwich)
             for p_name, p_unit, p_price, p_stock in [
                 ("Tata Salt", "packet", Decimal("28.00"), Decimal("37.00")),
                 ("Surf Excel", "packet", Decimal("140.00"), Decimal("50.00")),
+                ("Sugar", "kg", Decimal("42.00"), Decimal("10.00")),
                 ("Tea", "cup", Decimal("20.00"), Decimal("100.00")),
                 ("Veg Sandwich", "pcs", Decimal("80.00"), Decimal("50.00")),
             ]:
@@ -98,9 +99,16 @@ async def lifespan(app: FastAPI):
                         is_active=True,
                     ))
                     db.commit()
-                elif existing_p.current_stock <= Decimal("0.00"):
-                    existing_p.current_stock = p_stock
-                    db.commit()
+                else:
+                    changed = False
+                    if existing_p.selling_price <= Decimal("0.00"):
+                        existing_p.selling_price = p_price
+                        changed = True
+                    if existing_p.current_stock <= Decimal("0.00"):
+                        existing_p.current_stock = p_stock
+                        changed = True
+                    if changed:
+                        db.commit()
 
             # Ensure sample customers Rahul & Amit exist with WhatsApp numbers
             from app.models.billing import Customer

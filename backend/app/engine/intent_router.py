@@ -117,6 +117,10 @@ class IntentRouter:
                 clarification_message=clarification,
             )
 
+        # External queries: if prompt asks for "online", "internet", "google", "market rate", route immediately to AI reasoning
+        if any(w in clean for w in ["online", "internet", "google", "market rate"]):
+            return IntentMatch(intent="UNKNOWN", confidence=0.0, is_unknown=True)
+
         # Step 1: Check Exact Trigger Regexes
         best_intent: Optional[str] = None
         best_score = 0.0
