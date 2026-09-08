@@ -597,7 +597,8 @@ async def admin_chat(req: AdminChatRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/inventory/clear")
+@router.post("/api/v1/admin/inventory/clear", tags=["admin"])
+@router.post("/inventory/clear", tags=["admin"])
 def clear_inventory(db: Session = Depends(get_db)):
     """Clear all products from inventory so store can start fresh with clean varieties."""
     res = InventoryService.clear_all_inventory(db=db)
